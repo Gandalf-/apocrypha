@@ -7,7 +7,7 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.txt')) as f:
     long_description = f.read()
 
-version = '1.0.0'
+version = '1.0.1'
 download = \
     'https://github.com/Gandalf-/apocrypha/archive/' + version + 'tar.gz'
 

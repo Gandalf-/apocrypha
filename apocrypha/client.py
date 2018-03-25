@@ -55,7 +55,7 @@ class Client(object):
         else:
             return result
 
-    def keys(self, *keys, default=None):
+    def keys(self, *keys):
         ''' string ..., maybe any -> list of string | none | ApocryphaError
 
         >>> keys = db.keys('devbot', 'events')
@@ -64,11 +64,7 @@ class Client(object):
         '''
         keys = list(keys) if keys else ['']
         result = query(keys + ['--keys'], host=self.host, port=self.port)
-
-        if not result:
-            return default
-
-        return result
+        return result if result else []
 
     def delete(self, *keys):
         ''' string ... -> none

@@ -7,7 +7,7 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.md')) as f:
     long_description = f.read()
 
-version = '1.0.0'
+version = '1.0.2'
 download = \
     'https://github.com/Gandalf-/apocrypha/archive/' + version + 'tar.gz'
 
@@ -24,7 +24,7 @@ setup(
     download_url=download,
     keywords=['database', 'json'],
     classifiers=[
-        'Development Status :: 2 - Beta',
+        'Development Status :: 4 - Beta',
         'Programming Language :: Python :: 3',
     ],
     project_urls={

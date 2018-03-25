@@ -11,19 +11,29 @@ from apocrypha.core import ApocryphaError
 
 
 class Client(object):
+    '''
+    client API object for communicating with an Apocrypha Server
+
+    >>> db = apocrypha.client.Client()
+    '''
 
     def __init__(self, host='localhost', port=9999):
         self.host = host
         self.port = port
 
     def get(self, *keys, default=None, cast=None):
-        ''' string ..., maybe any, maybe any -> string | list | dict | none
+        ''' string ..., maybe any, maybe any -> any | ApocryphaError
 
         retrieve a given key, if the key is not found `default` will be
         returned instead
 
-            values = db.get('devbot', 'events', default={})
-            root   = db.get()
+        >>> values = db.get('nonexistant', 'index', default={})
+        >>> type(values)
+        dict
+
+        >>> values = db.get('index', 'that', 'exists', cast=set)
+        >>> type(values)
+        set
         '''
         keys = list(keys) if keys else ['']
 
@@ -45,23 +55,41 @@ class Client(object):
         else:
             return result
 
-    def keys(self, *keys):
-        ''' string ... -> list of string | none
+    def keys(self, *keys, default=None):
+        ''' string ..., maybe any -> list of string | none | ApocryphaError
 
-            keys = db.keys('devbot', 'events')
-            root = db.keys()
+        >>> keys = db.keys('devbot', 'events')
+        >>> type(keys)
+        list
         '''
         keys = list(keys) if keys else ['']
-        return query(keys + ['--keys'], host=self.host, port=self.port)
+        result = query(keys + ['--keys'], host=self.host, port=self.port)
+
+        if not result:
+            return default
+
+        return result
 
     def delete(self, *keys):
         ''' string ... -> none
+
+        >>> db.delete('some', 'key')
         '''
         keys = list(keys) if keys else ['']
         query(keys + ['--del'], host=self.host, port=self.port)
 
     def append(self, *keys, value):
-        ''' string ..., str | list of str -> none
+        ''' string ..., str | list of str -> none | ApocryphaError
+
+        append an element to an apocrypha list. appending to a string creates a
+        list with the original element and the new element
+
+        >>> db.append('new key', value='hello')
+        >>> type(db.get('new key'))
+        str
+        >>> db.append('new key', value='there')
+        >>> type(db.get('new key'))
+        list
         '''
         keys = list(keys) if keys else ['']
 
@@ -75,7 +103,13 @@ class Client(object):
             raise ApocryphaError('error: {v} is not a str or list')
 
     def remove(self, *keys, value):
-        ''' string ..., str | list of str -> none
+        ''' string ..., str | list of str -> none | ApocryphaError
+
+        remove an element from a list, if more than one of the element exists
+        in the list, only one is removed
+
+        >>> db.set('my', 'list', value=['a', 'b', 'c'])
+        >>> db.remove('my', 'list', value='b')
         '''
         keys = list(keys) if keys else ['']
 
@@ -93,9 +127,10 @@ class Client(object):
         set a value for a given key, creating if necessary. can be used to
         delete keys if value={}
 
-            events = {'key': 'value'}
-            db.set('devbot', 'events', value=events)
-            db.set('devbot', 'events', value={})
+        >>> events = {'key': 'value'}
+        >>> db.set('devbot', 'events', value=events)
+        >>> db.get('devbot', 'events')
+        {'key': 'value'}
         '''
         keys = list(keys) if keys else ['']
 

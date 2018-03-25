@@ -177,6 +177,7 @@ class TestServer(unittest.TestCase):
         self.assertEqual(value, ['"sauce"'])
 
     #  timing
+    @unittest.skip('timing not currently supported')
     def test_timing(self):
         result = query(['-t', 'wolf', 'legs'])
         self.assertEqual(result, ['0'])
@@ -285,7 +286,7 @@ class TestServer(unittest.TestCase):
 
     def test_keys_non_existant(self):
         self.assertEqual(
-            TestServer.db.keys('yahoo', 'foobar'), [])
+            TestServer.db.keys('does not exist', 'foobar'), [])
 
     def test_keys_error(self):
         with self.assertRaises(ApocryphaError):

@@ -592,6 +592,7 @@ class TestCache(unittest.TestCase):
             a.maybe_cache(['apple', op, 'value'])
             self.assertEqual(a.cache, {})
 
+    @unittest.skip('using simple caching')
     def test_invalidate_with_overwrite(self):
         a = Apocrypha(testdb)
 
@@ -600,9 +601,10 @@ class TestCache(unittest.TestCase):
         self.assertEqual(a.cache, {('key',): 'value'})
 
         a.write_needed = True
-        a.maybe_invalidate_cache(['key', '=', 'new value'])
+        # a.maybe_invalidate_cache(['key', '=', 'new value'])
         self.assertEqual(a.cache, {})
 
+    @unittest.skip('using simple caching')
     def test_invalidate_with_delete(self):
         a = Apocrypha(testdb)
 
@@ -611,9 +613,10 @@ class TestCache(unittest.TestCase):
         self.assertEqual(a.cache, {('key',): 'value'})
 
         a.write_needed = True
-        a.maybe_invalidate_cache(['key', '-d'])
+        # a.maybe_invalidate_cache(['key', '-d'])
         self.assertEqual(a.cache, {})
 
+    @unittest.skip('using simple caching')
     def test_invalidate_with_set(self):
         a = Apocrypha(testdb)
 
@@ -622,9 +625,10 @@ class TestCache(unittest.TestCase):
         self.assertEqual(a.cache, {('key',): 'value'})
 
         a.write_needed = True
-        a.maybe_invalidate_cache(['key', '--set', 'new value'])
+        # a.maybe_invalidate_cache(['key', '--set', 'new value'])
         self.assertEqual(a.cache, {})
 
+    @unittest.skip('using simple caching')
     def test_invalidate_children(self):
         a = Apocrypha(testdb)
 
@@ -637,9 +641,10 @@ class TestCache(unittest.TestCase):
              ('one', 'two three'): 'value'})
 
         a.write_needed = True
-        a.maybe_invalidate_cache(['one', '-d'])
+        # a.maybe_invalidate_cache(['one', '-d'])
         self.assertEqual(a.cache, {})
 
+    @unittest.skip('using simple caching')
     def test_invalidate_root_child(self):
         '''
         both children of a non root key are invalidated when the parent changed
@@ -658,12 +663,13 @@ class TestCache(unittest.TestCase):
              ('three',): 'value'})
 
         a.write_needed = True
-        a.maybe_invalidate_cache(['one', '-d'])
+        # a.maybe_invalidate_cache(['one', '-d'])
         self.assertEqual(
             a.cache,
             {('two', 'two three', 'five'): 'value',
              ('three',): 'value'})
 
+    @unittest.skip('using simple caching')
     def test_invalidate_children_non_root(self):
         '''
         both children of a non root key are invalidated when the parent changed
@@ -681,9 +687,10 @@ class TestCache(unittest.TestCase):
              ('one',): 'value'})
 
         a.write_needed = True
-        a.maybe_invalidate_cache(['one', 'two three', '-d'])
+        # a.maybe_invalidate_cache(['one', 'two three', '-d'])
         self.assertEqual(a.cache, {})
 
+    @unittest.skip('using simple caching')
     def test_invalidate_children_non_root_read_op(self):
         '''
         both children of a non root key are invalidated when the parent changed
@@ -697,9 +704,10 @@ class TestCache(unittest.TestCase):
         a.maybe_cache(['two'])
 
         a.write_needed = True
-        a.maybe_invalidate_cache(['one', 'two three', '-d'])
+        # a.maybe_invalidate_cache(['one', 'two three', '-d'])
         self.assertEqual(a.cache, {('two',): 'value'})
 
+    @unittest.skip('using simple caching')
     def test_invalidate_siblings_not_effected(self):
         '''
         invalidating one child doesn't affect the other children
@@ -715,7 +723,7 @@ class TestCache(unittest.TestCase):
              ('one', 'apple', 'sauce'): 'value'})
 
         a.write_needed = True
-        a.maybe_invalidate_cache(['one', 'two three', '-d'])
+        # a.maybe_invalidate_cache(['one', 'two three', '-d'])
         self.assertEqual(
             a.cache, {('one', 'apple', 'sauce'): 'value'})
 

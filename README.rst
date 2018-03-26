@@ -30,7 +30,7 @@ more examples.
     'alice': {
       'age': 30
     },
-    'bob' : [
+    'bob' : {
       'age': 20
     }
   }

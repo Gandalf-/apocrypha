@@ -50,7 +50,7 @@ class Client(object):
 
             except ValueError:
                 raise ApocryphaError(
-                    'error: unable to case to ' + str(cast))
+                    'error: unable to case to ' + str(cast)) from None
 
         else:
             return result
@@ -96,7 +96,7 @@ class Client(object):
             query(keys + ['+'] + value, host=self.host, port=self.port)
 
         except (TypeError, ValueError):
-            raise ApocryphaError('error: {v} is not a str or list')
+            raise ApocryphaError('error: {v} is not a str or list') from None
 
     def remove(self, *keys, value):
         ''' string ..., str | list of str -> none | ApocryphaError
@@ -113,7 +113,7 @@ class Client(object):
             value = [value]
 
         if type(value) not in [str, list]:
-            raise ApocryphaError('error: {v} is not a str or list')
+            raise ApocryphaError('error: {v} is not a str or list') from None
 
         query(keys + ['-'] + value, host=self.host, port=self.port)
 
@@ -138,7 +138,20 @@ class Client(object):
 
         except (TypeError, ValueError):
             raise ApocryphaError(
-                'error: cannot set values that are not JSON serializable')
+                'error: value is not JSON serializable') from None
+
+    def apply(self, *keys, func):
+        ''' string ..., (list of any -> list of any) -> none
+
+        >>> db.set('colors', value=['blue', 'green', 'red', 'red'])
+        >>> db.apply('colors', func=lambda xs: list(set(xs)))
+        >>> db.get('colors')
+        ['blue', 'green', 'red']
+        '''
+        keys = list(keys) if keys else ['']
+
+        values = func(self.get(*keys))
+        self.set(*keys, value=values)
 
 
 def query(args, host='localhost', port=9999, raw=False):
@@ -176,7 +189,7 @@ def query(args, host='localhost', port=9999, raw=False):
 
     result = list(filter(None, result.split('\n')))
     if result and 'error:' in result[0]:
-        raise ApocryphaError(result[0])
+        raise ApocryphaError(result[0]) from None
 
     if raw:
         result = json.loads(''.join(result)) if result else None

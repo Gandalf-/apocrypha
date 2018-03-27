@@ -3,6 +3,8 @@
 import json
 import pprint
 import sys
+import time
+import threading
 
 
 class ApocryphaError(Exception):
@@ -45,7 +47,8 @@ class Apocrypha(object):
 
         self.output = []    # list of string
         self.cache = {}     # dict of tuple of string
-        self.timing = {}    # dict of tuple of string
+
+        self._queue_write = False
 
         try:
             with open(path, 'r+') as fd:
@@ -57,42 +60,36 @@ class Apocrypha(object):
         except ValueError:
             self._error('could not parse database on disk')
 
-    def action(self, args):
-        ''' list of string -> none
+        self._writer_thread = threading.Thread(target=self._writer)
+        self._writer_thread.daemon = True
+        self._writer_thread.start()
 
-        may be overridden for custom behavior such as utilizing self.cache or
-        self.timing
-        '''
-        self._action(self.db, args)
-
-    def reset(self):
+    def post_action(self):
         ''' none -> none
 
-        restore internal values to defaults, used after action()
+        cache, normalize, queue a disk write, reset internal values
         '''
+        self._normalize(self.db)
+
+        if self.write_needed:
+            self.cache = {}
+            self._queue_write = True
+
+        # reset
         self.add_context = False
         self.dereference_occurred = False
         self.strict = False
         self.write_needed = False
-
         self.output = []
 
-    def maybe_save_db(self):
-        ''' none -> none
+    def action(self, args):
+        ''' list of string -> none
 
-        Normalize and write out the database, but only if self.write_needed is
-        True also clear the cache, because things may have changed
+        may be overridden for custom behavior such as utilizing self.cache or
         '''
+        self._action(self.db, args)
 
-        self.normalize(self.db)
-
-        if self.write_needed:
-
-            # write the updated values back out
-            with open(self.path, 'w') as fd:
-                json.dump(self.db, fd, sort_keys=True)
-
-    def maybe_cache(self, args):
+    def _maybe_cache(self, args):
         ''' list of string -> none
         '''
         key = tuple(args)
@@ -106,21 +103,22 @@ class Apocrypha(object):
         if cache:
             self.cache[key] = self.output
 
-    def maybe_invalidate_cache(self):
-        ''' list of string -> none
-
-        If a write has occurred, we may need to invalidate some entries in
-        self.cache; we can invalidate only the necessary entries by inspecting
-        the arguments to the query
+    def _writer(self):
+        ''' none -> none
+        callback for writer_thread
         '''
+        while True:
+            time.sleep(1)
 
-        # nothing to invalidate if not a write operation
-        if not self.write_needed:
-            return
+            if self._queue_write:
 
-        self.cache = {}
+                # write the updated values back out
+                with open(self.path, 'w') as fd:
+                    json.dump(self.db, fd, sort_keys=True)
 
-    def normalize(self, db):
+                self._queue_write = False
+
+    def _normalize(self, db):
         ''' dict -> bool
 
         @db     level of the database to normalize
@@ -153,12 +151,12 @@ class Apocrypha(object):
 
             # recurse
             elif type_of_leaf == dict:
-                child_removed_child = self.normalize(leaf)
+                child_removed_child = self._normalize(leaf)
 
                 # if our child removed a child, they may now need to be removed
                 # if that was their only child; so we check ourselves again
                 if child_removed_child:
-                    return self.normalize(db)
+                    return self._normalize(db)
 
         return child_removed
 

@@ -26,11 +26,6 @@ class ApocryphaServer(apocrypha.Apocrypha):
         caching is not allowed for queries that include references or where
         context is requested
         '''
-        # request for timing information
-        if args and args[0] == '-t':
-            key = tuple(args[1:])
-            self.output = self.timing.get(key, '0') + '\n'
-            return
 
         # all other queries
         key = tuple(args)
@@ -46,7 +41,7 @@ class ApocryphaServer(apocrypha.Apocrypha):
             else:
                 self.output = ''
 
-            self.maybe_cache(args)
+            self._maybe_cache(args)
 
 
 class ApocryphaHandler(socketserver.BaseRequestHandler):
@@ -59,8 +54,11 @@ class ApocryphaHandler(socketserver.BaseRequestHandler):
     '''
 
     def parse_arguments(self):
+        ''' none -> none
 
-        # arguments are delimited by newlines, remove empty elements
+        arguments are delimited by newlines, remove empty elements
+        '''
+
         args = self.data.split('\n') if self.data else []
         args = list(filter(None, args))
 
@@ -97,8 +95,8 @@ class ApocryphaHandler(socketserver.BaseRequestHandler):
 
         args = self.parse_arguments()
 
-        result = ''
         try:
+            result = ''
             db.action(args)
             result = db.output
 
@@ -113,9 +111,7 @@ class ApocryphaHandler(socketserver.BaseRequestHandler):
         query_duration = (end_time - start_time) / milliseconds
 
         # reset internal values, save changes if needed
-        db.maybe_invalidate_cache()
-        db.maybe_save_db()
-        db.reset()
+        db.post_action()
 
         if not self.server.quiet:
             print('{t:.5f} {c:2} {a}'

@@ -25,7 +25,7 @@ class Apocrypha(object):
 
     operators = {
         '=', '+', '-', '@', '-k', '--keys', '-e', '--edit', '-s',
-        '--set', '-d', '--del'}
+        '--set', '-d', '--del', '-p', '--pop'}
 
     read_ops = {
         '-e', '--edit', '-k', '--keys'}
@@ -227,6 +227,10 @@ class Apocrypha(object):
                 elif key in {'-d', '--del'}:
                     del(last_base[left])
                     self.write_needed = True
+                    return
+
+                elif key in {'-p', '--pop'}:
+                    self._pop(last_base, left)
                     return
 
             # indexing
@@ -494,3 +498,21 @@ class Apocrypha(object):
             base[left] = base[left][0]
 
         self.write_needed = True
+
+    def _pop(self, base, left):
+        ''' dict of any, string, list of string
+        '''
+        if isinstance(base[left], list):
+            self._display(base[left].pop())
+            self.write_needed = True
+
+        elif isinstance(base[left], str):
+            self._display(base[left])
+            del(base[left])
+            self.write_needed = True
+
+        elif base[left] == {}:
+            return
+
+        else:
+            self._error('cannot pop from a dictionary')

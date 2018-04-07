@@ -74,6 +74,19 @@ class Client(object):
         keys = list(keys) if keys else ['']
         query(keys + ['--del'], host=self.host, port=self.port)
 
+    def pop(self, *keys, cast=None):
+        ''' string ... -> any | None
+        '''
+        keys = list(keys) if keys else ['']
+
+        result = query(keys + ['--pop'], host=self.host, port=self.port)
+        result = result[0] if result else None
+
+        if result and cast:
+            result = cast(result)
+
+        return result
+
     def append(self, *keys, value):
         ''' string ..., str | list of str -> none | ApocryphaError
 

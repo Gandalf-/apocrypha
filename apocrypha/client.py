@@ -4,6 +4,7 @@ import json
 import select
 import socket
 import subprocess
+import struct
 import sys
 import time
 
@@ -20,6 +21,15 @@ class Client(object):
     def __init__(self, host='localhost', port=9999):
         self.host = host
         self.port = port
+        self.sock = None
+
+    def _query(self, keys, raw=False):
+
+        result, self.sock = query(
+            keys, self.host, port=self.port, raw=raw,
+            close=False, sock=self.sock)
+
+        return result
 
     def get(self, *keys, default=None, cast=None):
         ''' string ..., maybe any, maybe any -> any | ApocryphaError
@@ -36,8 +46,7 @@ class Client(object):
         set
         '''
         keys = list(keys) if keys else ['']
-
-        result = query(keys, host=self.host, port=self.port, raw=True)
+        result = self._query(keys, raw=True)
 
         if not result:
             return default
@@ -63,7 +72,7 @@ class Client(object):
         list
         '''
         keys = list(keys) if keys else ['']
-        result = query(keys + ['--keys'], host=self.host, port=self.port)
+        result = self._query(keys + ['--keys'])
         return result if result else []
 
     def delete(self, *keys):
@@ -72,18 +81,22 @@ class Client(object):
         >>> db.delete('some', 'key')
         '''
         keys = list(keys) if keys else ['']
-        query(keys + ['--del'], host=self.host, port=self.port)
+        self._query(keys + ['--del'])
 
     def pop(self, *keys, cast=None):
         ''' string ... -> any | None
         '''
         keys = list(keys) if keys else ['']
 
-        result = query(keys + ['--pop'], host=self.host, port=self.port)
+        result = self._query(keys + ['--pop'])
         result = result[0] if result else None
 
-        if result and cast:
-            result = cast(result)
+        try:
+            if result and cast:
+                result = cast(result)
+        except ValueError:
+            print('error', keys, result)
+            raise ApocryphaError('error: {v} is not a str or list') from None
 
         return result
 
@@ -106,7 +119,7 @@ class Client(object):
             value = [value]
 
         try:
-            query(keys + ['+'] + value, host=self.host, port=self.port)
+            self._query(keys + ['+'] + value)
 
         except (TypeError, ValueError):
             raise ApocryphaError('error: {v} is not a str or list') from None
@@ -128,7 +141,7 @@ class Client(object):
         if type(value) not in [str, list]:
             raise ApocryphaError('error: {v} is not a str or list') from None
 
-        query(keys + ['-'] + value, host=self.host, port=self.port)
+        self._query(keys + ['-'] + value)
 
     def set(self, *keys, value):
         ''' string ..., string | list | dict | none -> none
@@ -145,9 +158,7 @@ class Client(object):
 
         try:
             value = json.dumps(value)
-
-            query(keys + ['--set', value],
-                  host=self.host, port=self.port)
+            self._query(keys + ['--set', value])
 
         except (TypeError, ValueError):
             raise ApocryphaError(
@@ -167,37 +178,71 @@ class Client(object):
         self.set(*keys, value=values)
 
 
-def query(args, host='localhost', port=9999, raw=False):
+def network_write(sock, message):
+    ''' socket, string -> none
+    '''
+    try:
+        message = struct.pack('>I', len(message)) + message.encode('utf-8')
+        sock.sendall(message)
+
+    except (BrokenPipeError, UnicodeDecodeError):
+        return False
+
+    else:
+        return True
+
+
+def network_read(sock):
+    ''' socket -> string, none
+    '''
+
+    def _recv_all(n):
+        data = b''
+
+        while len(data) < n:
+            fragment = sock.recv(n - len(data))
+
+            if not fragment:
+                break
+            else:
+                data += fragment
+
+        return data
+
+    raw_msg_len = _recv_all(4)
+    if not raw_msg_len:
+        return None
+
+    msg_len = struct.unpack('>I', raw_msg_len)[0]
+    return _recv_all(msg_len).decode('utf-8')
+
+
+def query(args, host='localhost', port=9999, raw=False, close=True, sock=None):
     ''' list of string -> string | dict | list
 
     send a query to an Apocrypha server, either returning a list of strings or
     the result of json.loads() on the result '''
 
-    remote = (host, port)
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(remote)
     args = list(args)
+    remote = (host, port)
 
     if raw and args and args[-1] not in {'-e', '--edit'}:
         args += ['--edit']
 
     message = '\n'.join(args) + '\n'
-    sock.sendall(message.encode('utf-8'))
-    sock.shutdown(socket.SHUT_WR)
 
-    result = ''
-    try:
-        while True:
-            data = sock.recv(1024)
-            if data:
-                result += data.decode('utf-8')
-            else:
-                break
+    if not sock:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(remote)
 
-    except UnicodeDecodeError:
-        result = 'error: unable to decode query result'
+    network_write(sock, message)
+    result = network_read(sock)
 
-    finally:
+    if result is None:
+        print('something went wrong', args)
+        return 'error network length', sock
+
+    if close:
         sock.close()
 
     result = list(filter(None, result.split('\n')))
@@ -207,7 +252,7 @@ def query(args, host='localhost', port=9999, raw=False):
     if raw:
         result = json.loads(''.join(result)) if result else None
 
-    return result
+    return result, sock
 
 
 def _edit_temp_file(temp_file):

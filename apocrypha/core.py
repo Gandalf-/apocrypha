@@ -44,6 +44,7 @@ class Apocrypha(object):
         self.headless = headless
         self.path = path
         self.strict = False
+        self.lock = threading.Lock()
 
         self.output = []    # list of string
         self.cache = {}     # dict of tuple of string

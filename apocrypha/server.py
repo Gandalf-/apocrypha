@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import apocrypha.client as client
 import apocrypha.core as apocrypha
 import os
 import socketserver
@@ -83,42 +84,44 @@ class ApocryphaHandler(socketserver.BaseRequestHandler):
         milliseconds = 10 ** 5
 
         # get query, parse into arguments
-        start_time = int(round(time.time() * milliseconds))
-        self.data = ''
         while True:
-            data = self.request.recv(1024).decode('utf-8')
-
-            if not data:
+            self.data = client.network_read(self.request)
+            if not self.data:
                 break
-            else:
-                self.data += data
 
-        args = self.parse_arguments()
+            start_time = int(round(time.time() * milliseconds))
+            args = self.parse_arguments()
+            db.lock.acquire()
 
-        try:
-            result = ''
-            db.action(args)
-            result = db.output
+            try:
+                result = ''
+                db.action(args)
+                result = db.output
 
-        except apocrypha.ApocryphaError as error:
-            # user, usage error
-            result = str(error)
+            except apocrypha.ApocryphaError as error:
+                # user, usage error
+                result = str(error)
 
-        # send reply to client
-        self.request.sendall(result.encode('utf-8'))
+            # send reply to client
+            if not client.network_write(self.request, result):
+                break
 
-        end_time = int(round(time.time() * milliseconds))
-        query_duration = (end_time - start_time) / milliseconds
+            end_time = int(round(time.time() * milliseconds))
+            query_duration = (end_time - start_time) / milliseconds
 
-        # reset internal values, save changes if needed
-        db.post_action()
+            # reset internal values, save changes if needed
+            db.post_action()
+            db.lock.release()
 
-        if not self.server.quiet:
-            print('{t:.5f} {c:2} {a}'
-                  .format(t=query_duration, c=len(db.cache), a=str(args)[:70]))
+            if not self.server.quiet:
+                print('{t:.5f} {c:2} {a}'
+                      .format(
+                          t=query_duration,
+                          c=len(db.cache),
+                          a=str(args)[:70]))
 
 
-class Server(socketserver.TCPServer):
+class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
     ''' none -> socketserver.TCPServer
 
     allow address reuse for faster restarts
@@ -131,6 +134,11 @@ class Server(socketserver.TCPServer):
             self, server_address, RequestHandlerClass)
         self.database = database
         self.quiet = quiet
+
+    def teardown(self):
+        # self.database._writer_thread.join(2)
+        server.shutdown()
+        server.server_close()
 
 
 if __name__ == '__main__':
@@ -153,5 +161,4 @@ if __name__ == '__main__':
         print('exiting')
 
     finally:
-        server.shutdown()
-        server.server_close()
+        server.teardown()

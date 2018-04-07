@@ -7,14 +7,15 @@ import unittest
 from apocrypha.core import ApocryphaError
 from apocrypha.server import ApocryphaServer, ApocryphaHandler, Server
 
-db = apocrypha.client.Client()
+client = apocrypha.client.Client()
 
 
 def query(args, raw=False):
     ''' list of string -> string
     '''
-    return apocrypha.client.query(
+    result, _ = apocrypha.client.query(
         args, port=49999, raw=raw)
+    return result
 
 
 class TestServer(unittest.TestCase):
@@ -53,8 +54,8 @@ class TestServer(unittest.TestCase):
         '''
         shutdown the server
         '''
-        TestServer.server.shutdown()
-        TestServer.server.server_close()
+        TestServer.server_thread.join(1)
+        print('done')
 
     # server tests
     #   caching
@@ -136,18 +137,19 @@ class TestServer(unittest.TestCase):
 
     @unittest.skip('unknown issue')
     def test_cache_doesnt_effect_sibling(self):
-        db.delete('one layer')
+        client.delete('one layer')
 
-        db.set('one layer', 'two layer', value='cake')
-        db.set('one layer', 'apple layer', value='sauce')
+        client.set('one layer', 'two layer', value='cake')
+        client.set('one layer', 'apple layer', value='sauce')
         print(TestServer.database.db)
 
         self.assertEqual(
-            db.get('one layer', 'two layer'), 'cake')
+            client.get('one layer', 'two layer'), 'cake')
         self.assertEqual(
-            db.get('one layer', 'apple layer'), 'sauce')
+            client.get('one layer', 'apple layer'), 'sauce')
         self.assertEqual(
-            db.get('one layer'), {'two layer': 'cake', 'apple layer': 'sauce'})
+            client.get('one layer'),
+            {'two layer': 'cake', 'apple layer': 'sauce'})
 
         print(TestServer.database.cache)
         self.assertIn(('one layer',), TestServer.database.cache)

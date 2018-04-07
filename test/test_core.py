@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# pylint: disable=protected-access
+
 import unittest
 from apocrypha.core import Apocrypha, ApocryphaError
 
@@ -555,7 +557,7 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['key'])
+        a._maybe_cache(['key'])
 
         self.assertEqual(
             a.cache, {('key',): 'value'})
@@ -564,7 +566,7 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['apple', 'blue', 'berry'])
+        a._maybe_cache(['apple', 'blue', 'berry'])
 
         self.assertEqual(
             a.cache, {('apple', 'blue', 'berry'): 'value'})
@@ -573,10 +575,10 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['key'])
+        a._maybe_cache(['key'])
 
         for op in Apocrypha.read_ops:
-            a.maybe_cache(['apple', op])
+            a._maybe_cache(['apple', op])
 
         output = {
             ('apple', '-e'): 'value', ('apple', '--keys'): 'value',
@@ -589,7 +591,7 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         for op in Apocrypha.write_ops:
-            a.maybe_cache(['apple', op, 'value'])
+            a._maybe_cache(['apple', op, 'value'])
             self.assertEqual(a.cache, {})
 
     @unittest.skip('using simple caching')
@@ -597,7 +599,7 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['key'])
+        a._maybe_cache(['key'])
         self.assertEqual(a.cache, {('key',): 'value'})
 
         a.write_needed = True
@@ -609,7 +611,7 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['key'])
+        a._maybe_cache(['key'])
         self.assertEqual(a.cache, {('key',): 'value'})
 
         a.write_needed = True
@@ -621,7 +623,7 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['key'])
+        a._maybe_cache(['key'])
         self.assertEqual(a.cache, {('key',): 'value'})
 
         a.write_needed = True
@@ -633,8 +635,8 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['one', 'two three', 'four'])
-        a.maybe_cache(['one', 'two three'])
+        a._maybe_cache(['one', 'two three', 'four'])
+        a._maybe_cache(['one', 'two three'])
         self.assertEqual(
             a.cache,
             {('one', 'two three', 'four'): 'value',
@@ -652,9 +654,9 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['one', 'two three', 'four'])
-        a.maybe_cache(['two', 'two three', 'five'])
-        a.maybe_cache(['three'])
+        a._maybe_cache(['one', 'two three', 'four'])
+        a._maybe_cache(['two', 'two three', 'five'])
+        a._maybe_cache(['three'])
 
         self.assertEqual(
             a.cache,
@@ -677,9 +679,9 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['one', 'two three', 'four'])
-        a.maybe_cache(['one', 'two three', 'five'])
-        a.maybe_cache(['one'])
+        a._maybe_cache(['one', 'two three', 'four'])
+        a._maybe_cache(['one', 'two three', 'five'])
+        a._maybe_cache(['one'])
         self.assertEqual(
             a.cache,
             {('one', 'two three', 'four'): 'value',
@@ -698,10 +700,10 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['one', 'two three', 'four'])
-        a.maybe_cache(['one', '--keys'])
-        a.maybe_cache(['one'])
-        a.maybe_cache(['two'])
+        a._maybe_cache(['one', 'two three', 'four'])
+        a._maybe_cache(['one', '--keys'])
+        a._maybe_cache(['one'])
+        a._maybe_cache(['two'])
 
         a.write_needed = True
         # a.maybe_invalidate_cache(['one', 'two three', '-d'])
@@ -715,8 +717,8 @@ class TestCache(unittest.TestCase):
         a = Apocrypha(testdb)
 
         a.output = 'value'
-        a.maybe_cache(['one', 'two three', 'four'])
-        a.maybe_cache(['one', 'apple', 'sauce'])
+        a._maybe_cache(['one', 'two three', 'four'])
+        a._maybe_cache(['one', 'apple', 'sauce'])
         self.assertEqual(
             a.cache,
             {('one', 'two three', 'four'): 'value',
@@ -726,25 +728,6 @@ class TestCache(unittest.TestCase):
         # a.maybe_invalidate_cache(['one', 'two three', '-d'])
         self.assertEqual(
             a.cache, {('one', 'apple', 'sauce'): 'value'})
-
-
-class TestNormalize(unittest.TestCase):
-
-    def test_remove_empty_dict(self):
-        d = {'a': {'b': {'c': {}}}}
-
-        a = Apocrypha(testdb)
-
-        a.normalize(d)
-        self.assertEqual(d, {})
-
-    def test_list_to_singleton(self):
-        lis = {'a': ['1']}
-
-        a = Apocrypha(testdb)
-
-        a.normalize(lis)
-        self.assertEqual(lis, {'a': '1'})
 
 
 class TestApocryphaExtensive(unittest.TestCase):

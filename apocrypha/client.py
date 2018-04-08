@@ -94,9 +94,11 @@ class Client(object):
         try:
             if result and cast:
                 result = cast(result)
+
         except ValueError:
-            print('error', keys, result)
-            raise ApocryphaError('error: {v} is not a str or list') from None
+            raise ApocryphaError(
+                'error: cast {c} is not applicable to {t}'
+                .format(c=cast.__name__, t=result)) from None
 
         return result
 
@@ -240,7 +242,7 @@ def query(args, host='localhost', port=9999, raw=False, close=True, sock=None):
 
     if result is None:
         print('something went wrong', args)
-        return 'error network length', sock
+        return 'error: network length', sock
 
     if close:
         sock.close()

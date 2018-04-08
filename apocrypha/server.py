@@ -6,6 +6,8 @@ import os
 import socketserver
 import time
 
+milliseconds = 10 ** 5
+
 
 class ApocryphaServer(apocrypha.Apocrypha):
 
@@ -17,22 +19,21 @@ class ApocryphaServer(apocrypha.Apocrypha):
         apocrypha.Apocrypha.__init__(self, path)
 
     def action(self, args):
-        ''' list of string, maybe bool -> none
+        ''' list of string -> none
 
         @args       arguments from the user
 
-        This overrides the default, which saves the database after giving the
-        response to the user to only give the response
+        updates self.output with the result of the query
 
         caching is not allowed for queries that include references or where
         context is requested
         '''
 
         # all other queries
-        key = tuple(args)
+        cache_key = tuple(args)
 
-        if key in self.cache:
-            self.output = self.cache[key]
+        if cache_key in self.cache:
+            self.output = self.cache[cache_key]
 
         else:
             self._action(self.db, args)
@@ -47,78 +48,91 @@ class ApocryphaServer(apocrypha.Apocrypha):
 
 class ApocryphaHandler(socketserver.BaseRequestHandler):
     '''
-    The request handler class for our server.
-
-    It is instantiated once per connection to the server, and must
-    override the handle() method to implement communication to the
-    client.
+    read query off of the client socket, parse arguments, send response
     '''
-
-    def parse_arguments(self):
-        ''' none -> none
-
-        arguments are delimited by newlines, remove empty elements
-        '''
-
-        args = self.data.split('\n') if self.data else []
-        args = list(filter(None, args))
-
-        while args and args[0] in {'-c', '--context', '-s', '--strict'}:
-
-            if args[0] == '-c':
-                self.server.database.add_context = True
-
-            if args[0] == '-s':
-                self.server.database.strict = True
-
-            args = args[1:]
-
-        return args
 
     def handle(self):
         ''' none -> none
 
         self.request is the TCP socket connected to the client
         '''
+        client_okay = True
+
+        while client_okay:
+            client_okay = self._handle()
+
+    def _handle(self):
+        ''' none -> none
+        '''
+        data = client.network_read(self.request)
+        if not data:
+            return False
+
         db = self.server.database
-        milliseconds = 10 ** 5
 
-        # get query, parse into arguments
-        while True:
-            self.data = client.network_read(self.request)
-            if not self.data:
-                break
-
-            start_time = int(round(time.time() * milliseconds))
-            args = self.parse_arguments()
-            db.lock.acquire()
+        with db.lock:
+            start_time = self._now()
+            args = self._parse_arguments(data)
+            result = ''
 
             try:
-                result = ''
                 db.action(args)
                 result = db.output
 
+            # user, usage error
             except apocrypha.ApocryphaError as error:
-                # user, usage error
                 result = str(error)
 
             # send reply to client
-            if not client.network_write(self.request, result):
-                break
+            able_to_reply = client.network_write(self.request, result)
+            if not able_to_reply:
+                return False
 
-            end_time = int(round(time.time() * milliseconds))
+            end_time = self._now()
             query_duration = (end_time - start_time) / milliseconds
 
             # reset internal values, save changes if needed
             db.post_action()
-            db.lock.release()
 
-            if not self.server.quiet:
-                print('{t:.5f} {c:2} {a}'
-                      .format(
-                          t=query_duration,
-                          c=len(db.cache),
-                          a=str(args)[:70]))
+        self._log(args, query_duration)
+        return True
+
+    def _parse_arguments(self, data):
+        ''' none -> none
+
+        arguments are delimited by newlines, remove empty elements
+        '''
+
+        args = data.split('\n') if data else []
+        args = [arg for arg in args if arg]
+
+        while args and args[0] in {'-c', '--context', '-s', '--strict'}:
+
+            if args[0] in {'-c', '--context'}:
+                self.server.database.add_context = True
+
+            if args[0] == {'-s', '--strict'}:
+                self.server.database.strict = True
+
+            args = args[1:]
+
+        return args
+
+    def _log(self, args, duration):
+        ''' list of string -> none
+        '''
+        if self.server.quiet:
+            return
+
+        cache_size = len(self.server.database.cache)
+        args = str(args)[:70]
+
+        print('{t:.5f} {c:2} {a}'.format(t=duration, c=cache_size, a=args))
+
+    def _now(self):
+        ''' none -> int
+        '''
+        return int(round(time.time() * milliseconds))
 
 
 class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):

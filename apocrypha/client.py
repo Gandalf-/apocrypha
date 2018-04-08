@@ -3,8 +3,8 @@
 import json
 import select
 import socket
-import subprocess
 import struct
+import subprocess
 import sys
 import time
 
@@ -23,9 +23,11 @@ class Client(object):
         self.port = port
         self.sock = None
 
-    def _query(self, keys, raw=False):
+    def query(self, keys, raw=False):
+        ''' list of string, maybe bool -> string | none
+        '''
 
-        result, self.sock = query(
+        result, self.sock = _query(
             keys, self.host, port=self.port, raw=raw,
             close=False, sock=self.sock)
 
@@ -46,7 +48,7 @@ class Client(object):
         set
         '''
         keys = list(keys) if keys else ['']
-        result = self._query(keys, raw=True)
+        result = self.query(keys, raw=True)
 
         if not result:
             return default
@@ -72,7 +74,7 @@ class Client(object):
         list
         '''
         keys = list(keys) if keys else ['']
-        result = self._query(keys + ['--keys'])
+        result = self.query(keys + ['--keys'])
         return result if result else []
 
     def delete(self, *keys):
@@ -81,14 +83,14 @@ class Client(object):
         >>> db.delete('some', 'key')
         '''
         keys = list(keys) if keys else ['']
-        self._query(keys + ['--del'])
+        self.query(keys + ['--del'])
 
     def pop(self, *keys, cast=None):
         ''' string ... -> any | None
         '''
         keys = list(keys) if keys else ['']
 
-        result = self._query(keys + ['--pop'])
+        result = self.query(keys + ['--pop'])
         result = result[0] if result else None
 
         try:
@@ -121,7 +123,7 @@ class Client(object):
             value = [value]
 
         try:
-            self._query(keys + ['+'] + value)
+            self.query(keys + ['+'] + value)
 
         except (TypeError, ValueError):
             raise ApocryphaError('error: {v} is not a str or list') from None
@@ -143,7 +145,7 @@ class Client(object):
         if type(value) not in [str, list]:
             raise ApocryphaError('error: {v} is not a str or list') from None
 
-        self._query(keys + ['-'] + value)
+        self.query(keys + ['-'] + value)
 
     def set(self, *keys, value):
         ''' string ..., string | list | dict | none -> none
@@ -160,7 +162,7 @@ class Client(object):
 
         try:
             value = json.dumps(value)
-            self._query(keys + ['--set', value])
+            self.query(keys + ['--set', value])
 
         except (TypeError, ValueError):
             raise ApocryphaError(
@@ -219,7 +221,8 @@ def network_read(sock):
     return _recv_all(msg_len).decode('utf-8')
 
 
-def query(args, host='localhost', port=9999, raw=False, close=True, sock=None):
+def _query(args, host='localhost', port=9999, raw=False,
+           close=True, sock=None):
     ''' list of string -> string | dict | list
 
     send a query to an Apocrypha server, either returning a list of strings or
@@ -281,17 +284,8 @@ def _edit_temp_file(temp_file):
 
 def main(args):
     ''' list of string -> IO
+    '''
 
-    standard query
-        ... server
-
-    interactive edit
-        ... server --edit
-
-    remote server
-        ... -h remote.host.net server '''
-
-    edit_mode = False
     host = 'localhost'
 
     # check for data in stdin
@@ -304,25 +298,22 @@ def main(args):
         args = args[2:]
 
     # check for edit mode before we make the query
+    edit_mode = False
     if args and args[-1] in {'-e', '--edit'}:
         edit_mode = True
         temp_file = '/tmp/apocrypha-' + '-'.join(args[:-1]) + '.json'
 
-    try:
-        result = query(args, host=host)
-        result = '\n'.join(result)
-
-    except ConnectionRefusedError:
-        print('error: could not connect to server')
-        sys.exit(1)
+    db = Client(host=host)
+    result = db.get(*args)
 
     # interactive edit
     if edit_mode:
         with open(temp_file, 'w+') as fd:
-            fd.write(result)
+            fd.write(
+                json.dumps(result, indent=4, sort_keys=True))
 
         output = _edit_temp_file(temp_file)
-        query(args[:-1] + ['--set', output], host=host)
+        db.query(args[:-1] + ['--set', output])
 
     # result to console
     else:

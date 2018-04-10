@@ -7,14 +7,13 @@ import unittest
 from apocrypha.core import ApocryphaError
 from apocrypha.server import ApocryphaServer, ApocryphaHandler, Server
 
-client = apocrypha.client.Client()
+client = apocrypha.client.Client(port=49999)
 
 
 def query(args, raw=False):
     ''' list of string -> string
     '''
-    result, _ = apocrypha.client.query(
-        args, port=49999, raw=raw)
+    result = client.query(args, raw=raw)
     return result
 
 
@@ -44,9 +43,7 @@ class TestServer(unittest.TestCase):
         TestServer.server_thread = threading.Thread(
                 target=TestServer.server.serve_forever)
 
-        TestServer.server_thread.daemon = True
         TestServer.server_thread.start()
-
         TestServer.db = apocrypha.client.Client(port=49999)
 
     @classmethod

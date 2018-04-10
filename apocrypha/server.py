@@ -151,8 +151,8 @@ class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
     def teardown(self):
         # self.database._writer_thread.join(2)
-        server.shutdown()
-        server.server_close()
+        self.shutdown()
+        self.server_close()
 
 
 if __name__ == '__main__':

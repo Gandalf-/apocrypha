@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import apocrypha.client as client
-import apocrypha.core as apocrypha
+import apocrypha.core
 import os
 import socketserver
 import time
@@ -9,14 +9,14 @@ import time
 milliseconds = 10 ** 5
 
 
-class ApocryphaServer(apocrypha.Apocrypha):
+class ServerDatabase(apocrypha.core.Database):
 
     def __init__(self, path):
         ''' filepath -> ApocryphaServer
 
         @path       full path to the database json file
         '''
-        apocrypha.Apocrypha.__init__(self, path)
+        apocrypha.core.Database.__init__(self, path)
 
     def action(self, args):
         ''' list of string -> none
@@ -46,7 +46,7 @@ class ApocryphaServer(apocrypha.Apocrypha):
             self._maybe_cache(args)
 
 
-class ApocryphaHandler(socketserver.BaseRequestHandler):
+class ServerHandler(socketserver.BaseRequestHandler):
     '''
     read query off of the client socket, parse arguments, send response
     '''
@@ -80,7 +80,7 @@ class ApocryphaHandler(socketserver.BaseRequestHandler):
                 result = db.output
 
             # user, usage error
-            except apocrypha.ApocryphaError as error:
+            except apocrypha.core.ApocryphaError as error:
                 result = str(error)
 
             # send reply to client
@@ -164,8 +164,8 @@ if __name__ == '__main__':
 
     server = Server(
         (host, port),
-        ApocryphaHandler,
-        ApocryphaServer(db_path))
+        ServerHandler,
+        ServerDatabase(db_path))
 
     try:
         print('starting')

@@ -14,7 +14,7 @@ class ApocryphaError(Exception):
     pass
 
 
-class Apocrypha(object):
+class Database(object):
     '''
     A flexible, json based database that supports
     - strings, lists, dictionaries
@@ -99,7 +99,7 @@ class Apocrypha(object):
         # get the result or the query contained a write operator
         cache = not (self.add_context or self.dereference_occurred)
         cache = cache and not (
-                Apocrypha.write_ops.intersection(set(args)))
+                Database.write_ops.intersection(set(args)))
 
         if cache:
             self.cache[key] = self.output
@@ -196,7 +196,7 @@ class Apocrypha(object):
             left = keys[i - 1]      # string
             right = keys[i + 1:]    # list of string
 
-            if key in Apocrypha.operators:
+            if key in Database.operators:
                 if key == '=':
                     self._assign(last_base, left, right)
                     return

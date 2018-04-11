@@ -204,7 +204,11 @@ def network_read(sock):
         data = b''
 
         while len(data) < n:
-            fragment = sock.recv(n - len(data))
+            try:
+                fragment = sock.recv(n - len(data))
+            except ConnectionResetError:
+                print('lost connection to remote')
+                return None
 
             if not fragment:
                 break

@@ -61,8 +61,9 @@ class Database(object):
         except ValueError:
             self._error('could not parse database on disk')
 
+        self.writer_running = threading.Event()
+        self.writer_running.set()
         self._writer_thread = threading.Thread(target=self._writer)
-        self._writer_thread.daemon = True
         self._writer_thread.start()
 
     def post_action(self):
@@ -108,7 +109,7 @@ class Database(object):
         ''' none -> none
         callback for writer_thread
         '''
-        while True:
+        while self.writer_running.is_set():
             time.sleep(1)
 
             if self._queue_write:

@@ -150,7 +150,11 @@ class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.quiet = quiet
 
     def teardown(self):
-        # self.database._writer_thread.join(2)
+        ''' none -> none
+
+        stop database writer thread, stop our own threads
+        '''
+        self.database.writer_running.clear()
         self.shutdown()
         self.server_close()
 

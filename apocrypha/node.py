@@ -35,23 +35,24 @@ class NodeHandler(socketserver.BaseRequestHandler):
                 break
             parsed = [_ for _ in data.split('\n') if _]
 
-            # check for node to node messages
-            forward = True
-            if self.server.is_node_message(parsed):
-                parsed = parsed[1:]
-                forward = False
+            with self.server.lock:
+                # check for node to node messages
+                forward = True
+                if self.server.is_node_message(parsed):
+                    parsed = parsed[1:]
+                    forward = False
 
-            # get result from local server
-            result = local.query(parsed)
-            result = '\n'.join(result) + '\n'
+                # get result from local server
+                result = local.query(parsed)
+                result = '\n'.join(result) + '\n'
 
-            able_to_reply = client.network_write(self.request, result)
-            if not able_to_reply:
-                break
+                able_to_reply = client.network_write(self.request, result)
+                if not able_to_reply:
+                    break
 
-            # forward query on to peers
-            if forward:
-                self.server.forward_to_peers(parsed)
+                # forward query on to peers
+                if forward:
+                    self.server.forward_to_peers(parsed)
 
 
 class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -66,6 +67,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         '''
         self.running = threading.Event()
         self.running.set()
+        self.lock = threading.Lock()
 
         # node server
         socketserver.TCPServer.__init__(
@@ -86,13 +88,13 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.node_addr = node_addr          # our host, port
         self.local_port = server_addr[1]    # port of our local server
         self.local = client.Client(         # connection to our local server
-                port=self.local_port)
+            port=self.local_port)
         self.peers = {}                     # string -> Peer
         self.info = self._get_info()
 
         # start peer monitoring thread
         self.peer_thread = threading.Thread(
-                target=self._connect_to_peers)
+            target=self._connect_to_peers)
         self.peer_thread.start()
 
     def is_node_message(self, data):
@@ -120,22 +122,20 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
     def teardown(self):
         ''' none -> none
+
+        tell our own threads to stop, shutdown the server
         '''
         self.running.clear()
-        self.server.shutdown()
-        self.server.server_close()
-
-        self.server_thread.join(1)
-
-        self.shutdown()
-        self.server_close()
+        self.server.teardown()
 
     def _connect_to_peers(self):
         ''' none -> none
         '''
         while self.running.is_set():
+            print('checking for peers')
             peers_info = self.local.get(
-                    'internal', 'peers', default={})
+                'internal', 'peers', default={})
+            self.info = self._get_info()
 
             for name, peer_info in peers_info.items():
 
@@ -152,12 +152,12 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
                 # save their information
                 self.peers[name] = new
                 self.local.set(
-                        'internal', 'peers', name, 'identity',
-                        value=new.identity)
+                    'internal', 'peers', name, 'identity',
+                    value=new.identity)
 
                 # see if they're connected to us
                 their_peers = new.client.get(
-                        '--node', 'internal', 'peers', default={})
+                    '--node', 'internal', 'peers', default={})
                 my_identity = self.info['identity']
                 match = False
 
@@ -169,8 +169,8 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
                 if not match:
                     my_name = self.info['identity']
                     new.client.set(
-                            '--node', 'internal', 'peers', my_name,
-                            value=self.info)
+                        '--node', 'internal', 'peers', my_name,
+                        value=self.info)
 
             time.sleep(5)
 
@@ -184,8 +184,11 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         if 'identity' not in local_data:
             local_data['identity'] = str(uuid.uuid4())
 
-        local_data['host'] = self.node_addr[0]
-        local_data['port'] = self.node_addr[1]
+        if 'host' not in local_data:
+            local_data['host'] = self.node_addr[0]
+
+        if 'port' not in local_data:
+            local_data['port'] = self.node_addr[1]
 
         self.local.set('internal', 'local', value=local_data)
 
@@ -206,14 +209,14 @@ class Peer(object):
         try:
             self.name = name
             self.client = client.Client(
-                    host=info['host'], port=int(info['port']))
+                host=info['host'], port=int(info['port']))
 
             self.identity = self.client.get(
-                    '--node', 'internal', 'local', 'identity')
+                '--node', 'internal', 'local', 'identity')
 
             print('peer connection established with', self.identity, self.name)
 
-        except ConnectionRefusedError:
+        except (TimeoutError, ConnectionRefusedError):
             print('could not connect to', name)
             raise PeerConnectionFailed
 
@@ -223,7 +226,7 @@ if __name__ == '__main__':
     db_path = os.path.expanduser('~') + '/.db.json'
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--host', type=str, default='127.0.0.1')
+    parser.add_argument('--host', type=str, default='0.0.0.0')
     parser.add_argument('--port', type=int, default=9999)
     parser.add_argument('--localport', type=int, default=9998)
     parser.add_argument('--config', type=str, default=db_path)
@@ -248,3 +251,5 @@ if __name__ == '__main__':
 
     finally:
         node.teardown()
+        node.shutdown()
+        node.server_close()

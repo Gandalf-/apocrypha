@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 
+# pylint: disable=too-many-arguments
+
+'''
+Client connection wrapper and network functions
+'''
+
 import json
 import select
 import socket
@@ -142,7 +148,7 @@ class Client(object):
         if isinstance(value, str):
             value = [value]
 
-        if type(value) not in [str, list]:
+        if not isinstance(value, (str, list)):
             raise ApocryphaError('error: {v} is not a str or list') from None
 
         self.query(keys + ['-'] + value)
@@ -200,12 +206,15 @@ def network_read(sock):
     ''' socket -> string, none
     '''
 
-    def _recv_all(n):
+    def _recv_all(n_bytes):
+        '''
+        read n bytes from a socket
+        '''
         data = b''
 
-        while len(data) < n:
+        while len(data) < n_bytes:
             try:
-                fragment = sock.recv(n - len(data))
+                fragment = sock.recv(n_bytes - len(data))
             except ConnectionResetError:
                 print('lost connection to remote')
                 return None
@@ -223,6 +232,14 @@ def network_read(sock):
 
     msg_len = struct.unpack('>I', raw_msg_len)[0]
     return _recv_all(msg_len).decode('utf-8')
+
+
+def query(args, host='localhost', port=9999, raw=False):
+    '''
+    wrapper around _query for backwards compatibility
+    '''
+    result, _ = _query(args, host=host, port=port, raw=raw)
+    return result
 
 
 def _query(args, host='localhost', port=9999, raw=False,
@@ -271,8 +288,8 @@ def _edit_temp_file(temp_file):
     '''
     subprocess.call(['vim', temp_file])
 
-    with open(temp_file, 'r') as fd:
-        output = fd.read()
+    with open(temp_file, 'r') as filep:
+        output = filep.read()
 
     try:
         output = json.dumps(json.loads(output))
@@ -307,17 +324,17 @@ def main(args):
         edit_mode = True
         temp_file = '/tmp/apocrypha-' + '-'.join(args[:-1]) + '.json'
 
-    db = Client(host=host)
-    result = db.get(*args)
+    client = Client(host=host)
+    result = client.get(*args)
 
     # interactive edit
     if edit_mode:
-        with open(temp_file, 'w+') as fd:
-            fd.write(
+        with open(temp_file, 'w+') as filep:
+            filep.write(
                 json.dumps(result, indent=4, sort_keys=True))
 
         output = _edit_temp_file(temp_file)
-        db.query(args[:-1] + ['--set', output])
+        client.query(args[:-1] + ['--set', output])
 
     # result to console
     else:

@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 
+# pylint: disable=too-many-statements
+# pylint: disable=too-many-branches
+# pylint: disable=too-many-return-statements
+# pylint: disable=too-many-instance-attributes
+
+'''
+Database and exception definitions
+'''
+
 import json
 import pprint
 import sys
@@ -52,11 +61,11 @@ class Database(object):
         self._queue_write = False
 
         try:
-            with open(path, 'r+') as fd:
-                self.db = json.load(fd)
+            with open(path, 'r+') as filep:
+                self.data = json.load(filep)
 
         except FileNotFoundError:
-            self.db = {}
+            self.data = {}
 
         except ValueError:
             self._error('could not parse database on disk')
@@ -71,7 +80,7 @@ class Database(object):
 
         cache, normalize, queue a disk write, reset internal values
         '''
-        self._normalize(self.db)
+        self._normalize(self.data)
 
         if self.write_needed:
             self.cache = {}
@@ -89,7 +98,7 @@ class Database(object):
 
         may be overridden for custom behavior such as utilizing self.cache or
         '''
-        self._action(self.db, args)
+        self._action(self.data, args)
 
     def _maybe_cache(self, args):
         ''' list of string -> none
@@ -100,7 +109,7 @@ class Database(object):
         # get the result or the query contained a write operator
         cache = not (self.add_context or self.dereference_occurred)
         cache = cache and not (
-                Database.write_ops.intersection(set(args)))
+            Database.write_ops.intersection(set(args)))
 
         if cache:
             self.cache[key] = self.output
@@ -115,15 +124,15 @@ class Database(object):
             if self._queue_write:
 
                 # write the updated values back out
-                with open(self.path, 'w') as fd:
-                    json.dump(self.db, fd, sort_keys=True)
+                with open(self.path, 'w') as filep:
+                    json.dump(self.data, filep, sort_keys=True)
 
                 self._queue_write = False
 
-    def _normalize(self, db):
+    def _normalize(self, data):
         ''' dict -> bool
 
-        @db     level of the database to normalize
+        @data     level of the database to normalize
 
         Finds lists of a single element and converts them into singletons,
 
@@ -138,18 +147,18 @@ class Database(object):
 
         child_removed = False
 
-        for child, leaf in list(db.items()):
+        for child, leaf in list(data.items()):
 
             # remove children without leaves
             if not leaf:
-                del(db[child])
+                del data[child]
                 child_removed = True
 
             type_of_leaf = type(leaf)
 
             # convert lists of a single element to singletons
             if type_of_leaf == list and len(leaf) == 1:
-                db[child] = leaf[0]
+                data[child] = leaf[0]
 
             # recurse
             elif type_of_leaf == dict:
@@ -158,7 +167,7 @@ class Database(object):
                 # if our child removed a child, they may now need to be removed
                 # if that was their only child; so we check ourselves again
                 if child_removed_child:
-                    return self._normalize(db)
+                    return self._normalize(data)
 
         return child_removed
 
@@ -211,7 +220,7 @@ class Database(object):
                     return
 
                 elif key == '@':
-                    self._search(self.db, keys[i + 1], keys[:i])
+                    self._search(self.data, keys[i + 1], keys[:i])
                     return
 
                 elif key in {'-k', '--keys'}:
@@ -227,7 +236,7 @@ class Database(object):
                     return
 
                 elif key in {'-d', '--del'}:
-                    del(last_base[left])
+                    del last_base[left]
                     self.write_needed = True
                     return
 
@@ -296,7 +305,7 @@ class Database(object):
         @args   list of database keys to check
 
         Dereferences always start at the top level of the database, hence the
-            action(db, db, ...)
+            action(data, data, ...)
 
             $ d pointer = value
             $ d !pointer
@@ -314,25 +323,25 @@ class Database(object):
 
         # current value is a string
         if isinstance(base, str):
-            if base in self.db:
+            if base in self.data:
                 target = [base]
             else:
                 target = base.split(' ')
 
             self._action(
-                self.db, target + args)
+                self.data, target + args)
 
         # current value is iterable
         else:
             for reference in base:
 
-                if reference in self.db:
+                if reference in self.data:
                     target = [reference]
                 else:
                     target = reference.split(' ')
 
                 self._action(
-                    self.db, target + args)
+                    self.data, target + args)
 
     def _display(self, value, context=None):
         ''' any, maybe string -> none
@@ -393,12 +402,12 @@ class Database(object):
             return
 
         # dict
-        for k, v in base.items():
-            if v == key:
+        for k, value in base.items():
+            if value == key:
                 self._display(k, context=' = '.join(context))
 
-            elif isinstance(v, dict) or isinstance(v, list):
-                self._search(v, key, context + [k])
+            elif isinstance(value, (dict, list)):
+                self._search(value, key, context + [k])
 
     def _assign(self, base, left, right):
         ''' dict of any, string, list of string -> none
@@ -469,7 +478,7 @@ class Database(object):
             base[left] = right
         else:
             # global overwrite
-            self.db = right
+            self.data = right
 
         self.write_needed = True
 
@@ -490,8 +499,8 @@ class Database(object):
                         t=type(base[left]).__name__))
 
         try:
-            for r in right:
-                base[left].remove(r)
+            for item in right:
+                base[left].remove(item)
 
         except ValueError:
             self._error('{a} not in {b}.'.format(a=right, b=left))
@@ -510,7 +519,7 @@ class Database(object):
 
         elif isinstance(base[left], str):
             self._display(base[left])
-            del(base[left])
+            del base[left]
             self.write_needed = True
 
         elif base[left] == {}:

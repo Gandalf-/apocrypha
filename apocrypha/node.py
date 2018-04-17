@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+# pylint: disable=too-many-instance-attributes
+# pylint: disable=too-few-public-methods
+
+'''
+abstraction of a server that allows communciation with other nodes
+'''
+
 import argparse
 import os
 import socketserver
@@ -12,6 +19,9 @@ import apocrypha.client as client
 
 
 class PeerConnectionFailed(Exception):
+    '''
+    encapsulates the various network errors that can happen while connecting
+    '''
     pass
 
 
@@ -56,10 +66,14 @@ class NodeHandler(socketserver.BaseRequestHandler):
 
 
 class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    '''
+    a server that forwards requests onto a local database server and
+    potentially remote nodes
+    '''
 
     allow_reuse_address = True
 
-    def __init__(self, node_addr, server_addr, RequestHandlerClass, database):
+    def __init__(self, node_addr, server_addr, handler, database):
         ''' (str, int), (str, int), BaseRequestHandler, Database -> Node
 
         create a Node; start our local database server, create a client
@@ -71,7 +85,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
         # node server
         socketserver.TCPServer.__init__(
-            self, node_addr, RequestHandlerClass)
+            self, node_addr, handler)
 
         # start the local apocrypha server
         self.server = server.Server(
@@ -81,7 +95,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             quiet=False)
 
         self.server_thread = threading.Thread(
-                target=self.server.serve_forever)
+            target=self.server.serve_forever)
         self.server_thread.start()
 
         # set locals
@@ -96,18 +110,6 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.peer_thread = threading.Thread(
             target=self._connect_to_peers)
         self.peer_thread.start()
-
-    def is_node_message(self, data):
-        ''' list of string -> bool
-
-        check if the query is a node to node message; this determines if it
-        will be forwarded on to our peers
-        '''
-        if data and '--node' == data[0]:
-            print('node taking', data, 'not fowarding')
-            return True
-
-        return False
 
     def forward_to_peers(self, data):
         ''' list of str -> None
@@ -196,6 +198,9 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 
 class Peer(object):
+    '''
+    data encapsulation of a remote peer Node
+    '''
 
     def __init__(self, name, info):
         ''' string, { 'host': str, 'port': int } -> Peer | None
@@ -221,8 +226,23 @@ class Peer(object):
             raise PeerConnectionFailed
 
 
-if __name__ == '__main__':
-    # Create the tcp server
+def is_node_message(data):
+    ''' list of string -> bool
+
+    check if the query is a node to node message; this determines if it
+    will be forwarded on to our peers
+    '''
+    if data and data[0] == '--node':
+        print('node taking', data, 'not fowarding')
+        return True
+
+    return False
+
+
+def main():
+    '''
+    create the node, handle teardown
+    '''
     db_path = os.path.expanduser('~') + '/.db.json'
 
     parser = argparse.ArgumentParser()
@@ -253,3 +273,7 @@ if __name__ == '__main__':
         node.teardown()
         node.shutdown()
         node.server_close()
+
+
+if __name__ == '__main__':
+    main()

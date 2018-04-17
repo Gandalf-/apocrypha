@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
 
-import apocrypha.client as client
-import apocrypha.core
+'''
+server and handler for database
+'''
+
 import os
 import socketserver
 import time
 
-milliseconds = 10 ** 5
+import apocrypha.client as client
+import apocrypha.core
+
+MILLISECONDS = 10 ** 5
 
 
 class ServerDatabase(apocrypha.core.Database):
+    '''
+    wrapper around Database that provides caching
+    '''
 
     def __init__(self, path):
         ''' filepath -> ApocryphaServer
@@ -36,7 +44,7 @@ class ServerDatabase(apocrypha.core.Database):
             self.output = self.cache[cache_key]
 
         else:
-            self._action(self.db, args)
+            self._action(self.data, args)
 
             if self.output:
                 self.output = '\n'.join(self.output) + '\n'
@@ -68,16 +76,16 @@ class ServerHandler(socketserver.BaseRequestHandler):
         if not data:
             return False
 
-        db = self.server.database
+        database = self.server.database
 
-        with db.lock:
-            start_time = self._now()
+        with database.lock:
+            start_time = _now()
             args = self._parse_arguments(data)
             result = ''
 
             try:
-                db.action(args)
-                result = db.output
+                database.action(args)
+                result = database.output
 
             # user, usage error
             except apocrypha.core.ApocryphaError as error:
@@ -88,11 +96,11 @@ class ServerHandler(socketserver.BaseRequestHandler):
             if not able_to_reply:
                 return False
 
-            end_time = self._now()
-            query_duration = (end_time - start_time) / milliseconds
+            end_time = _now()
+            query_duration = (end_time - start_time) / MILLISECONDS
 
             # reset internal values, save changes if needed
-            db.post_action()
+            database.post_action()
 
         self._log(args, query_duration)
         return True
@@ -129,11 +137,6 @@ class ServerHandler(socketserver.BaseRequestHandler):
 
         print('{t:.5f} {c:2} {a}'.format(t=duration, c=cache_size, a=args))
 
-    def _now(self):
-        ''' none -> int
-        '''
-        return int(round(time.time() * milliseconds))
-
 
 class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
     ''' none -> socketserver.TCPServer
@@ -142,10 +145,10 @@ class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
     '''
     allow_reuse_address = True
 
-    def __init__(self, server_address, RequestHandlerClass,
+    def __init__(self, server_address, handler,
                  database, quiet=False):
         socketserver.TCPServer.__init__(
-            self, server_address, RequestHandlerClass)
+            self, server_address, handler)
         self.database = database
         self.quiet = quiet
 
@@ -159,24 +162,30 @@ class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.server_close()
 
 
+def _now():
+    ''' none -> int
+    '''
+    return int(round(time.time() * MILLISECONDS))
+
+
 if __name__ == '__main__':
 
     # Create the tcp server
-    host = '0.0.0.0'
-    port = 9999
-    db_path = os.path.expanduser('~') + '/.db.json'
+    HOST = '0.0.0.0'
+    PORT = 9999
+    DB_PATH = os.path.expanduser('~') + '/.db.json'
 
-    server = Server(
-        (host, port),
+    SERVER = Server(
+        (HOST, PORT),
         ServerHandler,
-        ServerDatabase(db_path))
+        ServerDatabase(DB_PATH))
 
     try:
         print('starting')
-        server.serve_forever()
+        SERVER.serve_forever()
 
     except KeyboardInterrupt:
         print('exiting')
 
     finally:
-        server.teardown()
+        SERVER.teardown()

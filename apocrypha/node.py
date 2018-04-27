@@ -48,7 +48,7 @@ class NodeHandler(socketserver.BaseRequestHandler):
             with self.server.lock:
                 # check for node to node messages
                 forward = True
-                if self.server.is_node_message(parsed):
+                if is_node_message(parsed):
                     parsed = parsed[1:]
                     forward = False
 
@@ -60,9 +60,9 @@ class NodeHandler(socketserver.BaseRequestHandler):
                 if not able_to_reply:
                     break
 
-                # forward query on to peers
-                if forward:
-                    self.server.forward_to_peers(parsed)
+            # forward query on to peers
+            if forward:
+                self.server.forward_to_peers(parsed)
 
 
 class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):

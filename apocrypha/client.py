@@ -268,8 +268,7 @@ def _query(args, host='localhost', port=9999, raw=False,
     result = network_read(sock)
 
     if result is None:
-        print('something went wrong', args)
-        return 'error: network length', sock
+        raise ApocryphaError('error: network length')
 
     if close:
         sock.close()
@@ -311,14 +310,20 @@ def main(args):
     '''
 
     host = 'localhost'
+    port = 9999
 
     # check for data in stdin
     if select.select([sys.stdin], [], [], 0.0)[0]:
         args += [sys.stdin.read()]
 
     # using a non local server
-    if args and args[0] in {'-h', '--host'} and args[1]:
+    if len(args) > 2 and args[0] in {'-h', '--host'}:
         host = args[1]
+        args = args[2:]
+
+    # using a non standard port
+    if len(args) > 2 and args[0] in {'-p', '--port'}:
+        port = int(args[1])
         args = args[2:]
 
     # check for edit mode before we make the query
@@ -327,7 +332,7 @@ def main(args):
         edit_mode = True
         temp_file = '/tmp/apocrypha-' + '-'.join(args[:-1]) + '.json'
 
-    client = Client(host=host)
+    client = Client(host=host, port=port)
     result = client.get(*args)
 
     # interactive edit

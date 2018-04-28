@@ -1,7 +1,39 @@
 version: '3'
+
 services:
-  database:
-    image: leafiest/apocrypha
-    container_name: apocrypha
+
+  node1:
+    image: apocrypha
+    container_name: node1
     ports:
       - "9999:9999"
+    environment:
+      - AP_HOST=cedar.anardil.net
+      - AP_CNFG=/tmp/dbs/db.json
+      - AP_PORT=9999
+    volumes:
+      - ./node1.json:/tmp/dbs/db.json
+
+  node2:
+    image: apocrypha
+    container_name: node2
+    ports:
+      - "8888:8888"
+    environment:
+      - AP_HOST=cedar.anardil.net
+      - AP_CNFG=/tmp/dbs/db.json
+      - AP_PORT=8888
+    volumes:
+      - ./node2.json:/tmp/dbs/db.json
+
+  node3:
+    image: apocrypha
+    container_name: node3
+    ports:
+      - "7777:7777"
+    environment:
+      - AP_HOST=cedar.anardil.net
+      - AP_CNFG=/tmp/dbs/db.json
+      - AP_PORT=7777
+    volumes:
+      - ./node3.json:/tmp/dbs/db.json

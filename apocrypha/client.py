@@ -13,6 +13,7 @@ import struct
 import subprocess
 import sys
 import time
+import threading
 
 from apocrypha.core import ApocryphaError
 
@@ -28,14 +29,16 @@ class Client(object):
         self.host = host
         self.port = port
         self.sock = None
+        self.lock = threading.Lock()
 
     def query(self, keys, raw=False):
         ''' list of string, maybe bool -> string | none
         '''
 
-        result, self.sock = _query(
-            keys, self.host, port=self.port, raw=raw,
-            close=False, sock=self.sock)
+        with self.lock:
+            result, self.sock = _query(
+                keys, self.host, port=self.port, raw=raw,
+                close=False, sock=self.sock)
 
         return result
 

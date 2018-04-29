@@ -12,10 +12,10 @@ import socket
 import struct
 import subprocess
 import sys
-import time
 import threading
+import time
 
-from apocrypha.core import ApocryphaError
+from apocrypha.exceptions import DatabaseError
 
 
 class Client(object):
@@ -43,7 +43,7 @@ class Client(object):
         return result
 
     def get(self, *keys, default=None, cast=None):
-        ''' string ..., maybe any, maybe any -> any | ApocryphaError
+        ''' string ..., maybe any, maybe any -> any | DatabaseError
 
         retrieve a given key, if the key is not found `default` will be
         returned instead
@@ -69,14 +69,14 @@ class Client(object):
                 return cast(result)
 
             except ValueError:
-                raise ApocryphaError(
+                raise DatabaseError(
                     'error: unable to case to ' + str(cast)) from None
 
         else:
             return result
 
     def keys(self, *keys):
-        ''' string ..., maybe any -> list of string | none | ApocryphaError
+        ''' string ..., maybe any -> list of string | none | DatabaseError
 
         >>> keys = db.keys('devbot', 'events')
         >>> type(keys)
@@ -107,14 +107,14 @@ class Client(object):
                 result = cast(result)
 
         except ValueError:
-            raise ApocryphaError(
+            raise DatabaseError(
                 'error: cast {c} is not applicable to {t}'
                 .format(c=cast.__name__, t=result)) from None
 
         return result
 
     def append(self, *keys, value):
-        ''' string ..., str | list of str -> none | ApocryphaError
+        ''' string ..., str | list of str -> none | DatabaseError
 
         append an element to an apocrypha list. appending to a string creates a
         list with the original element and the new element
@@ -135,10 +135,10 @@ class Client(object):
             self.query(keys + ['+'] + value)
 
         except (TypeError, ValueError):
-            raise ApocryphaError('error: {v} is not a str or list') from None
+            raise DatabaseError('error: {v} is not a str or list') from None
 
     def remove(self, *keys, value):
-        ''' string ..., str | list of str -> none | ApocryphaError
+        ''' string ..., str | list of str -> none | DatabaseError
 
         remove an element from a list, if more than one of the element exists
         in the list, only one is removed
@@ -152,7 +152,7 @@ class Client(object):
             value = [value]
 
         if not isinstance(value, (str, list)):
-            raise ApocryphaError('error: {v} is not a str or list') from None
+            raise DatabaseError('error: {v} is not a str or list') from None
 
         self.query(keys + ['-'] + value)
 
@@ -174,7 +174,7 @@ class Client(object):
             self.query(keys + ['--set', value])
 
         except (TypeError, ValueError):
-            raise ApocryphaError(
+            raise DatabaseError(
                 'error: value is not JSON serializable') from None
 
     def apply(self, *keys, func):
@@ -268,14 +268,14 @@ def _query(args, host='localhost', port=9999, raw=False,
     result = network_read(sock)
 
     if result is None:
-        raise ApocryphaError('error: network length')
+        raise DatabaseError('error: network length')
 
     if close:
         sock.close()
 
     result = list(filter(None, result.split('\n')))
     if result and 'error:' in result[0]:
-        raise ApocryphaError(result[0]) from None
+        raise DatabaseError(result[0]) from None
 
     if raw:
         result = json.loads(''.join(result)) if result else None

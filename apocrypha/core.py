@@ -12,15 +12,20 @@ Database and exception definitions
 import json
 import pprint
 import sys
-import time
 import threading
+import time
+
+from apocrypha.exceptions import DatabaseError
 
 
-class ApocryphaError(Exception):
-    '''
-    used by Apocrypha.error()
-    '''
-    pass
+operators = {
+    '=', '+', '-', '@', '-k', '--keys', '-e', '--edit', '-s',
+    '--set', '-d', '--del', '-p', '--pop'}
+
+read_ops = {
+    '-e', '--edit', '-k', '--keys'}
+
+write_ops = operators - read_ops
 
 
 class Database(object):
@@ -31,15 +36,6 @@ class Database(object):
     - arbitrary depth indexing and assignment
     - symbolic links to other keys at any level
     '''
-
-    operators = {
-        '=', '+', '-', '@', '-k', '--keys', '-e', '--edit', '-s',
-        '--set', '-d', '--del', '-p', '--pop'}
-
-    read_ops = {
-        '-e', '--edit', '-k', '--keys'}
-
-    write_ops = operators - read_ops
 
     def __init__(self, path, headless=True):
         ''' string, maybe bool -> Apocrypha
@@ -108,8 +104,7 @@ class Database(object):
         # do not cache if context was added, a dereference was required to
         # get the result or the query contained a write operator
         cache = not (self.add_context or self.dereference_occurred)
-        cache = cache and not (
-            Database.write_ops.intersection(set(args)))
+        cache = cache and not write_ops.intersection(set(args))
 
         if cache:
             self.cache[key] = self.output
@@ -184,7 +179,7 @@ class Database(object):
 
         if self.headless:
             self.output += [message]
-            raise ApocryphaError(message)
+            raise DatabaseError(message)
 
         print(message, file=sys.stderr)
         sys.exit(1)
@@ -206,7 +201,7 @@ class Database(object):
             left = keys[i - 1]      # string
             right = keys[i + 1:]    # list of string
 
-            if key in Database.operators:
+            if key in operators:
                 if key == '=':
                     self._assign(last_base, left, right)
                     return

@@ -11,6 +11,8 @@ import time
 import apocrypha.client as client
 import apocrypha.core
 
+from apocrypha.exceptions import DatabaseError
+
 MILLISECONDS = 10 ** 5
 
 
@@ -76,19 +78,17 @@ class ServerHandler(socketserver.BaseRequestHandler):
         if not data:
             return False
 
-        database = self.server.database
-
-        with database.lock:
+        with self.server.database.lock:
             start_time = _now()
             args = self._parse_arguments(data)
             result = ''
 
             try:
-                database.action(args)
-                result = database.output
+                self.server.database.action(args)
+                result = self.server.database.output
 
             # user, usage error
-            except apocrypha.core.ApocryphaError as error:
+            except DatabaseError as error:
                 result = str(error)
 
             # send reply to client
@@ -100,7 +100,7 @@ class ServerHandler(socketserver.BaseRequestHandler):
             query_duration = (end_time - start_time) / MILLISECONDS
 
             # reset internal values, save changes if needed
-            database.post_action()
+            self.server.database.post_action()
 
         self._log(args, query_duration)
         return True
@@ -145,8 +145,9 @@ class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
     '''
     allow_reuse_address = True
 
-    def __init__(self, server_address, handler,
-                 database, quiet=False):
+    def __init__(self, server_address, handler, database, quiet=False):
+        ''' (str, int,), BaseRequestHandler, Database, bool -> Server
+        '''
         socketserver.TCPServer.__init__(
             self, server_address, handler)
         self.database = database

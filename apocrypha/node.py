@@ -17,20 +17,10 @@ import uuid
 
 import apocrypha.server as server
 import apocrypha.client as client
-from apocrypha.core import ApocryphaError, Database
+import apocrypha.core
 
-
-class PeerConnectionFailed(Exception):
-    '''
-    encapsulates the various network errors that can happen while connecting
-    '''
-    pass
-
-
-class RecoveredQuery(Exception):
-    ''' notifies the caller that the query failed
-    '''
-    pass
+from apocrypha.exceptions import \
+        PeerConnectionFailed, DatabaseError, RecoveredQuery
 
 
 class NodeHandler(socketserver.BaseRequestHandler):
@@ -38,15 +28,12 @@ class NodeHandler(socketserver.BaseRequestHandler):
     read query off of the client socket, parse arguments, send response
     '''
 
-    def handle(self):
+    def handle(self) -> None:
         ''' none -> none
 
         self.request is the TCP socket connected to the client
         '''
-        local = client.Client(port=self.server.local_port)
-
         while True:
-
             # get the query
             data = client.network_read(self.request)
             if not data:
@@ -55,12 +42,12 @@ class NodeHandler(socketserver.BaseRequestHandler):
 
             with self.server.lock:
                 # check for node to node messages
-                parsed, forward = self.server._handle_node_message(parsed)
+                parsed, forward = self.server.handle_node_message(parsed)
                 if parsed == Node.skip_query:
                     continue
 
                 # get result from local server
-                result = local.query(parsed)
+                result = self.server.local.query(parsed)
                 result = '\n'.join(result) + '\n'
 
                 able_to_reply = client.network_write(self.request, result)
@@ -111,7 +98,8 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
         # start the message forwarding thread
         self.messages = queue.Queue()
-        self.forwarder_thread = threading.Thread(target=self.forward_to_peers)
+        self.forwarder_thread = threading.Thread(
+            target=self.forward_to_peers)
         self.forwarder_thread.start()
 
         # start peer monitoring thread
@@ -122,9 +110,11 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
         # node server
         socketserver.TCPServer.__init__(
-            self, ('0.0.0.0', node_addr[1]), handler)
+            self,
+            ('0.0.0.0', node_addr[1]),
+            handler)
 
-    def forward_to_peers(self):
+    def forward_to_peers(self) -> None:
         ''' list of str -> None
 
         forward the query onto all of our peers; mark it as a node to node
@@ -136,20 +126,20 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             for peer in list(self.peers.values()):
                 print('forwarding', data, 'to', peer.host, peer.port)
                 try:
-                    self.recoverable_query(peer, ['--node'] + data)
+                    self._recoverable_query(peer, ['--node'] + data)
                 except RecoveredQuery:
                     pass
 
             self.messages.task_done()
 
-    def monitor_peers(self):
+    def monitor_peers(self) -> None:
         ''' none -> none
+
+        check peers for more peers to join, connect to all pending peers
         '''
         while self.running.is_set():
-
             self._check_for_peers()
             self._connect_to_peers()
-
             time.sleep(5)
 
     def teardown(self):
@@ -160,7 +150,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.running.clear()
         self.server.teardown()
 
-    def _find_initial_peers(self):
+    def _find_initial_peers(self) -> set:
         ''' none -> set of (str, int,)
 
         load the peer information we saved from the last time we ran. the
@@ -176,7 +166,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
         return peers_to_join
 
-    def _check_for_peers(self):
+    def _check_for_peers(self) -> None:
         ''' none -> none
 
         check our peers' peer lists to see if they know anyone we don't,
@@ -184,7 +174,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         '''
         for peer in list(self.peers.values()):
             try:
-                their_peers = self.recoverable_get(
+                their_peers = self._recoverable_get(
                     peer, '--node', 'internal', 'peers', '--edit', default={})
             except RecoveredQuery:
                 continue
@@ -199,8 +189,11 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
                     port = int(their_peers[their_peer]['port'])
                     self.peers_to_join.add((host, port,))
 
-    def _connect_to_peers(self):
+    def _connect_to_peers(self) -> None:
         ''' none -> none
+
+        try to create Peer objects for each pending peer, if we fail to connect
+        we'll try again later
         '''
         print('checking for peers')
         failed_connections = set()
@@ -231,14 +224,14 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             # if they're not, tell them to connect to us
             if my_identity not in their_peers:
                 try:
-                    self.recoverable_query(
+                    self._recoverable_query(
                         peer, ['--connect', my_host, str(my_port)])
                 except RecoveredQuery:
                     pass
 
         self.peers_to_join = failed_connections
 
-    def _merge(self, peer):
+    def _merge(self, peer) -> None:
         ''' Peer -> none
 
         see if we should pull the peers data to replace our own
@@ -246,12 +239,12 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         our_startup = float(self.local.get('internal', 'local', 'startup'))
         try:
             their_startup = float(
-                self.recoverable_get(peer, 'internal', 'local', 'startup'))
+                self._recoverable_get(peer, 'internal', 'local', 'startup'))
 
             if their_startup < our_startup:
                 print('merging with', peer.host, peer.port)
 
-                their_db = self.recoverable_get(peer)
+                their_db = self._recoverable_get(peer)
                 our_db = self.local.get()
 
                 new_db = their_db
@@ -263,30 +256,37 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         except RecoveredQuery:
             pass
 
-    def recoverable_query(self, peer, keys):
-        ''' Peer, any -> ?
+    def _recoverable_query(self, peer, keys):
+        ''' Peer, list of str -> ?
+
+        make a query against the remote peer, if something goes wrong attempt
+        to reconnect
         '''
         try:
             return peer.client.query(keys)
 
-        except (ConnectionError, ApocryphaError) as error:
+        except (ConnectionError, DatabaseError) as error:
             print(peer.identity, error)
             self._recover_peer(peer)
             raise RecoveredQuery from None
 
-    def recoverable_get(self, peer, *keys, default=None, cast=None):
+    def _recoverable_get(self, peer, *keys, default=None, cast=None):
         ''' Peer, any -> ?
+
+        make a get against the remote peer, if something goes wrong attempt
+        to reconnect
         '''
         try:
             return peer.client.get(*keys, default=default, cast=cast)
 
-        except (ConnectionError, ApocryphaError) as error:
+        except (ConnectionError, DatabaseError) as error:
             print(peer.identity, error)
             self._recover_peer(peer)
             raise RecoveredQuery from None
 
-    def _get_info(self):
-        '''
+    def _get_info(self) -> None:
+        ''' none -> none
+
         update "internal local" to have uuid, host, port. we send this
         information to new peers so they can connect with us
         '''
@@ -304,8 +304,9 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
         return data
 
-    def _recover_peer(self, peer):
+    def _recover_peer(self, peer) -> None:
         ''' Peer -> none
+
         we hit an error talking to a peer we've successfull connected to
         before, add them back to peers_to_join
         '''
@@ -316,7 +317,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
         self.peers_to_join.add((peer.host, peer.port,))
 
-    def _handle_node_message(self, data):
+    def handle_node_message(self, data) -> bool:
         ''' list of string -> bool
 
         check if the query is a node to node message; this determines if it
@@ -333,7 +334,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             return Node.skip_query, False
 
         # try to detect read only messages
-        if not set(data).intersection(Database.write_ops):
+        if not set(data).intersection(apocrypha.core.write_ops):
             return data, False
 
         return data, True

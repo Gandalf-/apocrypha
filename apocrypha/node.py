@@ -15,27 +15,27 @@ import threading
 import time
 import uuid
 
-import apocrypha.server as server
 import apocrypha.client as client
-import apocrypha.core
-
-from apocrypha.exceptions import \
-        PeerConnectionFailed, DatabaseError, RecoveredQuery
+import apocrypha.database as database
+import apocrypha.exceptions as exceptions
+import apocrypha.network as network
+import apocrypha.server as server
 
 
 class NodeHandler(socketserver.BaseRequestHandler):
     '''
-    read query off of the client socket, parse arguments, send response
+    read query off of the client socket, send it to the local server, send the
+    response back to the client, then maybe forward the query on to peers
     '''
 
     def handle(self) -> None:
         ''' none -> none
 
-        self.request is the TCP socket connected to the client
+        read in a loop so we can handle multiple requests
         '''
         while True:
             # get the query
-            data = client.network_read(self.request)
+            data = network.read(self.request)
             if not data:
                 break
             parsed = [_ for _ in data.split('\n') if _]
@@ -50,7 +50,7 @@ class NodeHandler(socketserver.BaseRequestHandler):
                 result = self.server.local.query(parsed)
                 result = '\n'.join(result) + '\n'
 
-                able_to_reply = client.network_write(self.request, result)
+                able_to_reply = network.write(self.request, result)
                 if not able_to_reply:
                     break
 
@@ -68,7 +68,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
     skip_query = 'SKIP_QUERY'
     allow_reuse_address = True
 
-    def __init__(self, node_addr, server_addr, handler, database):
+    def __init__(self, node_addr, server_addr, handler, db):
         ''' (str, int), (str, int), BaseRequestHandler, Database -> Node
 
         create a Node; start our local database server, create a client
@@ -82,7 +82,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.server = server.Server(
             server_addr,
             server.ServerHandler,
-            database,
+            db,
             quiet=False)
 
         self.server_thread = threading.Thread(
@@ -127,7 +127,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
                 print('forwarding', data, 'to', peer.host, peer.port)
                 try:
                     self._recoverable_query(peer, ['--node'] + data)
-                except RecoveredQuery:
+                except exceptions.FailedQuery:
                     pass
 
             self.messages.task_done()
@@ -176,7 +176,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             try:
                 their_peers = self._recoverable_get(
                     peer, '--node', 'internal', 'peers', '--edit', default={})
-            except RecoveredQuery:
+            except exceptions.FailedQuery:
                 continue
 
             # remove ourselves from the list
@@ -203,7 +203,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
             try:
                 peer = Peer(host, port)
-            except PeerConnectionFailed:
+            except exceptions.PeerCreateFailed:
                 failed_connections.add((host, port,))
                 continue
 
@@ -217,6 +217,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             self._merge(peer)
 
             # see if they're connected to us
+            print('checking their peers...')
             their_peers = peer.client.get(
                 '--node', 'internal', 'peers', default={})
             my_identity = self.info['identity']
@@ -224,10 +225,12 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             # if they're not, tell them to connect to us
             if my_identity not in their_peers:
                 try:
+                    print('sending connect message', peer.host, peer.port)
                     self._recoverable_query(
                         peer, ['--connect', my_host, str(my_port)])
-                except RecoveredQuery:
+                except exceptions.FailedQuery:
                     pass
+            print('done')
 
         self.peers_to_join = failed_connections
 
@@ -253,7 +256,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
                 self.local.set(value=new_db)
 
-        except RecoveredQuery:
+        except exceptions.FailedQuery:
             pass
 
     def _recoverable_query(self, peer, keys):
@@ -265,10 +268,10 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         try:
             return peer.client.query(keys)
 
-        except (ConnectionError, DatabaseError) as error:
+        except (ConnectionError, exceptions.DatabaseError) as error:
             print(peer.identity, error)
             self._recover_peer(peer)
-            raise RecoveredQuery from None
+            raise exceptions.FailedQuery from None
 
     def _recoverable_get(self, peer, *keys, default=None, cast=None):
         ''' Peer, any -> ?
@@ -279,10 +282,10 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         try:
             return peer.client.get(*keys, default=default, cast=cast)
 
-        except (ConnectionError, DatabaseError) as error:
+        except (ConnectionError, exceptions.DatabaseError) as error:
             print(peer.identity, error)
             self._recover_peer(peer)
-            raise RecoveredQuery from None
+            raise exceptions.FailedQuery from None
 
     def _get_info(self) -> None:
         ''' none -> none
@@ -334,7 +337,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             return Node.skip_query, False
 
         # try to detect read only messages
-        if not set(data).intersection(apocrypha.core.write_ops):
+        if not set(data).intersection(database.write_ops):
             return data, False
 
         return data, True
@@ -364,7 +367,7 @@ class Peer(object):
 
         except (TimeoutError, ConnectionError):
             print('could not connect to', host, port)
-            raise PeerConnectionFailed
+            raise exceptions.PeerCreateFailed
 
     def database_representation(self):
         '''

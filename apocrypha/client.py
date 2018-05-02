@@ -9,13 +9,13 @@ Client connection wrapper and network functions
 import json
 import select
 import socket
-import struct
 import subprocess
 import sys
 import threading
 import time
 
 from apocrypha.exceptions import DatabaseError
+from apocrypha.network import read, write
 
 
 class Client(object):
@@ -31,19 +31,23 @@ class Client(object):
         self.sock = None
         self.lock = threading.Lock()
 
-    def query(self, keys, raw=False):
-        ''' list of string, maybe bool -> string | none
+    def query(self, keys, interpret=False):
+        ''' list of str, maybe bool -> str | none
+
+        uses a lock because multiple threads may be using the same Client
+        object. the network protocol easily gets confused if the messages don't
+        match the lengths sent before
         '''
 
         with self.lock:
             result, self.sock = _query(
-                keys, self.host, port=self.port, raw=raw,
+                keys, self.host, port=self.port, interpret=interpret,
                 close=False, sock=self.sock)
 
         return result
 
     def get(self, *keys, default=None, cast=None):
-        ''' string ..., maybe any, maybe any -> any | DatabaseError
+        ''' str ..., maybe any, maybe any -> any | DatabaseError
 
         retrieve a given key, if the key is not found `default` will be
         returned instead
@@ -57,7 +61,7 @@ class Client(object):
         set
         '''
         keys = list(keys) if keys else ['']
-        result = self.query(keys, raw=True)
+        result = self.query(keys, interpret=True)
 
         if not result:
             return default
@@ -76,7 +80,7 @@ class Client(object):
             return result
 
     def keys(self, *keys):
-        ''' string ..., maybe any -> list of string | none | DatabaseError
+        ''' str ..., maybe any -> list of str | none | DatabaseError
 
         >>> keys = db.keys('devbot', 'events')
         >>> type(keys)
@@ -87,7 +91,7 @@ class Client(object):
         return result if result else []
 
     def delete(self, *keys):
-        ''' string ... -> none
+        ''' str ... -> none
 
         >>> db.delete('some', 'key')
         '''
@@ -95,7 +99,7 @@ class Client(object):
         self.query(keys + ['--del'])
 
     def pop(self, *keys, cast=None):
-        ''' string ... -> any | None
+        ''' str ... -> any | None
         '''
         keys = list(keys) if keys else ['']
 
@@ -114,9 +118,9 @@ class Client(object):
         return result
 
     def append(self, *keys, value):
-        ''' string ..., str | list of str -> none | DatabaseError
+        ''' str ..., str | list of str -> none | DatabaseError
 
-        append an element to an apocrypha list. appending to a string creates a
+        append an element to an apocrypha list. appending to a str creates a
         list with the original element and the new element
 
         >>> db.append('new key', value='hello')
@@ -138,7 +142,7 @@ class Client(object):
             raise DatabaseError('error: {v} is not a str or list') from None
 
     def remove(self, *keys, value):
-        ''' string ..., str | list of str -> none | DatabaseError
+        ''' str ..., str | list of str -> none | DatabaseError
 
         remove an element from a list, if more than one of the element exists
         in the list, only one is removed
@@ -157,7 +161,7 @@ class Client(object):
         self.query(keys + ['-'] + value)
 
     def set(self, *keys, value):
-        ''' string ..., string | list | dict | none -> none
+        ''' str ..., str | list | dict | none -> none
 
         set a value for a given key, creating if necessary. can be used to
         delete keys if value={}
@@ -178,7 +182,7 @@ class Client(object):
                 'error: value is not JSON serializable') from None
 
     def apply(self, *keys, func):
-        ''' string ..., (list of any -> list of any) -> none
+        ''' str ..., (list of any -> list of any) -> none
 
         >>> db.set('colors', value=['blue', 'green', 'red', 'red'])
         >>> db.apply('colors', func=lambda xs: list(set(xs)))
@@ -191,85 +195,43 @@ class Client(object):
         self.set(*keys, value=values)
 
 
-def network_write(sock, message):
-    ''' socket, string -> none
+def query(args, host='localhost', port=9999, interpret=False):
+    ''' list of str, str, int, bool -> any
+    legacy wrapper around _query for backwards compatibility, we just throw
+    away the socket
     '''
-    try:
-        message = struct.pack('>I', len(message)) + message.encode('utf-8')
-        sock.sendall(message)
-
-    except (BrokenPipeError, UnicodeDecodeError):
-        return False
-
-    else:
-        return True
-
-
-def network_read(sock):
-    ''' socket -> string, none
-    '''
-
-    def _recv_all(n_bytes):
-        '''
-        read n bytes from a socket
-        '''
-        data = b''
-
-        while len(data) < n_bytes:
-            try:
-                fragment = sock.recv(n_bytes - len(data))
-            except ConnectionResetError:
-                print('lost connection to remote')
-                return None
-
-            if not fragment:
-                break
-            else:
-                data += fragment
-
-        return data
-
-    raw_msg_len = _recv_all(4)
-    if not raw_msg_len:
-        return None
-
-    msg_len = struct.unpack('>I', raw_msg_len)[0]
-    return _recv_all(msg_len).decode('utf-8')
-
-
-def query(args, host='localhost', port=9999, raw=False):
-    '''
-    wrapper around _query for backwards compatibility
-    '''
-    result, _ = _query(args, host=host, port=port, raw=raw)
+    result, _ = _query(args, host=host, port=port, interpret=interpret)
     return result
 
 
-def _query(args, host='localhost', port=9999, raw=False,
+def _query(args, host='localhost', port=9999, interpret=False,
            close=True, sock=None):
-    ''' list of string -> string | dict | list
+    ''' list of str, str, int, bool, bool, bool -> any
 
-    send a query to an Apocrypha server, either returning a list of strings or
-    the result of json.loads() on the result '''
+    the real query function, all the others are wrappers
+
+    send a query to an Apocrypha server, either returning a list of strs or
+    the result of json.loads() on the result
+    '''
 
     args = list(args)
     remote = (host, port)
 
-    if raw and args and args[-1] not in {'-e', '--edit'}:
+    if interpret and args and args[-1] not in {'-e', '--edit'}:
         args += ['--edit']
-
     message = '\n'.join(args) + '\n'
 
+    # if they didn't give us a socket create a new one
     if not sock:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(remote)
 
-    network_write(sock, message)
-    result = network_read(sock)
+    # send the message, get the reply using apocrypha.network calls
+    write(sock, message)
+    result = read(sock)
 
     if result is None:
         raise DatabaseError('error: network length')
-
     if close:
         sock.close()
 
@@ -277,14 +239,14 @@ def _query(args, host='localhost', port=9999, raw=False,
     if result and 'error:' in result[0]:
         raise DatabaseError(result[0]) from None
 
-    if raw:
+    if interpret:
         result = json.loads(''.join(result)) if result else None
 
     return result, sock
 
 
 def _edit_temp_file(temp_file):
-    ''' string -> string
+    ''' str -> str
 
     open up the result of the query in a temporary file for manual editing.
     '''
@@ -306,7 +268,7 @@ def _edit_temp_file(temp_file):
 
 
 def main(args):
-    ''' list of string -> IO
+    ''' list of str -> IO
     '''
 
     host = 'localhost'

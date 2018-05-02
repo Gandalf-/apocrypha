@@ -5,14 +5,14 @@ exceptions for other modules
 '''
 
 
-class PeerConnectionFailed(Exception):
+class PeerCreateFailed(Exception):
     '''
     encapsulates the various network errors that can happen while connecting
     '''
     pass
 
 
-class RecoveredQuery(Exception):
+class FailedQuery(Exception):
     ''' notifies the caller that the query failed, the node will handle
     attempting to recover the peer
     '''

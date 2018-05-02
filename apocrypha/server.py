@@ -8,15 +8,14 @@ import os
 import socketserver
 import time
 
-import apocrypha.client as client
-import apocrypha.core
-
-from apocrypha.exceptions import DatabaseError
+import apocrypha.database as database
+import apocrypha.exceptions as exceptions
+import apocrypha.network as network
 
 MILLISECONDS = 10 ** 5
 
 
-class ServerDatabase(apocrypha.core.Database):
+class ServerDatabase(database.Database):
     '''
     wrapper around Database that provides caching
     '''
@@ -26,7 +25,7 @@ class ServerDatabase(apocrypha.core.Database):
 
         @path       full path to the database json file
         '''
-        apocrypha.core.Database.__init__(self, path)
+        database.Database.__init__(self, path)
 
     def action(self, args):
         ''' list of string -> none
@@ -74,7 +73,7 @@ class ServerHandler(socketserver.BaseRequestHandler):
     def _handle(self):
         ''' none -> none
         '''
-        data = client.network_read(self.request)
+        data = network.read(self.request)
         if not data:
             return False
 
@@ -88,11 +87,11 @@ class ServerHandler(socketserver.BaseRequestHandler):
                 result = self.server.database.output
 
             # user, usage error
-            except DatabaseError as error:
+            except exceptions.DatabaseError as error:
                 result = str(error)
 
             # send reply to client
-            able_to_reply = client.network_write(self.request, result)
+            able_to_reply = network.write(self.request, result)
             if not able_to_reply:
                 return False
 
@@ -145,12 +144,12 @@ class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
     '''
     allow_reuse_address = True
 
-    def __init__(self, server_address, handler, database, quiet=False):
+    def __init__(self, server_address, handler, db, quiet=False):
         ''' (str, int,), BaseRequestHandler, Database, bool -> Server
         '''
         socketserver.TCPServer.__init__(
             self, server_address, handler)
-        self.database = database
+        self.database = db
         self.quiet = quiet
 
     def teardown(self):
@@ -169,24 +168,28 @@ def _now():
     return int(round(time.time() * MILLISECONDS))
 
 
-if __name__ == '__main__':
-
+def main():
+    '''
+    create the server, handle teardown
+    '''
     # Create the tcp server
-    HOST = '0.0.0.0'
-    PORT = 9999
-    DB_PATH = os.path.expanduser('~') + '/.db.json'
+    host = '0.0.0.0'
+    port = 9999
+    db_path = os.path.expanduser('~') + '/.db.json'
 
-    SERVER = Server(
-        (HOST, PORT),
+    server = Server(
+        (host, port),
         ServerHandler,
-        ServerDatabase(DB_PATH))
+        ServerDatabase(db_path))
 
     try:
         print('starting')
-        SERVER.serve_forever()
-
+        server.serve_forever()
     except KeyboardInterrupt:
         print('exiting')
-
     finally:
-        SERVER.teardown()
+        server.teardown()
+
+
+if __name__ == '__main__':
+    main()

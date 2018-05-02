@@ -507,18 +507,15 @@ class Database(object):
 
     def _pop(self, base, left):
         ''' dict of any, string, list of string
+
+        display the result then remove it atomically
         '''
         if isinstance(base[left], list):
             self._display(base[left].pop())
             self.write_needed = True
 
-        elif isinstance(base[left], str):
+        # dict, str, int, ...
+        else:
             self._display(base[left])
             del base[left]
             self.write_needed = True
-
-        elif base[left] == {}:
-            return
-
-        else:
-            self._error('cannot pop from a dictionary')

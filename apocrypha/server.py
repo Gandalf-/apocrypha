@@ -73,8 +73,8 @@ class ServerHandler(socketserver.BaseRequestHandler):
     def _handle(self):
         ''' none -> none
         '''
-        data = network.read(self.request)
-        if not data:
+        data, error = network.read(self.request)
+        if error:
             return False
 
         with self.server.database.lock:

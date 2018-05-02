@@ -35,8 +35,8 @@ class NodeHandler(socketserver.BaseRequestHandler):
         '''
         while True:
             # get the query
-            data = network.read(self.request)
-            if not data:
+            data, error = network.read(self.request)
+            if error:
                 break
             parsed = [_ for _ in data.split('\n') if _]
 

@@ -228,9 +228,9 @@ def _query(args, host='localhost', port=9999, interpret=False,
 
     # send the message, get the reply using apocrypha.network calls
     write(sock, message)
-    result = read(sock)
+    result, error = read(sock)
 
-    if result is None:
+    if error:
         raise DatabaseError('error: network length')
     if close:
         sock.close()

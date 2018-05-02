@@ -5,7 +5,6 @@ Network functions, implements simple protocol that sends the size of the
 message before the message
 '''
 
-import socket
 import struct
 
 
@@ -26,44 +25,41 @@ def write(sock, message):
 
 
 def read(sock):
-    ''' socket -> string, none
+    ''' socket -> any, bool
 
     read the number of bytes in the message, unpack it, then read that many
     bytes and pass the result back to the caller
     '''
+    failure = (None, True)
 
-    def _recv_all(n_bytes):
-        '''
-        read n bytes from a socket
-        '''
-        data = b''
+    raw_msg_len, error = _recv_all(sock, 4)
+    if error or not raw_msg_len:
+        return failure
 
-        while len(data) < n_bytes:
-            try:
-                fragment = sock.recv(n_bytes - len(data))
-            except ConnectionResetError:
-                print('lost connection to remote')
-                return None
+    msg_len = struct.unpack('>I', raw_msg_len)[0]
+    result, error = _recv_all(sock, msg_len)
+    if error:
+        return failure
 
-            if not fragment:
-                break
-            else:
-                data += fragment
+    return result.decode('utf-8'), False
 
-        return data
 
-    try:
-        sock.settimeout(2)
+def _recv_all(sock, n_bytes):
+    '''
+    read n bytes from a socket
+    '''
+    data = b''
 
-        raw_msg_len = _recv_all(4)
-        if not raw_msg_len:
-            return None
+    while len(data) < n_bytes:
+        try:
+            fragment = sock.recv(n_bytes - len(data))
+        except ConnectionError:
+            print('lost connection to remote')
+            return None, True
 
-        msg_len = struct.unpack('>I', raw_msg_len)[0]
-        return _recv_all(msg_len).decode('utf-8')
+        if not fragment:
+            break
+        else:
+            data += fragment
 
-    except socket.timeout:
-        return None
-
-    finally:
-        sock.settimeout(None)
+    return data, False

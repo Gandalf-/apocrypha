@@ -1,5 +1,9 @@
-from setuptools import setup
+'''
+pypi setup.py for apocrypha
+'''
+
 from os import path
+from setuptools import setup
 
 here = path.abspath(path.dirname(__file__))
 
@@ -7,7 +11,7 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.rst')) as f:
     long_description = f.read()
 
-version = '1.1.0'
+version = '2.0.0'
 download = \
     'https://github.com/Gandalf-/apocrypha/archive/' + version + 'tar.gz'
 

@@ -14,6 +14,7 @@ import pprint
 import sys
 import threading
 import time
+import zlib
 
 from apocrypha.exceptions import DatabaseError
 
@@ -57,8 +58,13 @@ class Database(object):
         self._queue_write = False
 
         try:
-            with open(path, 'r+') as filep:
-                self.data = json.load(filep)
+            with open(path, 'rb') as filep:
+                data = filep.read()
+                try:
+                    data = zlib.decompress(data).decode()
+                    self.data = json.loads(data)
+                except zlib.error:
+                    self.data = json.loads(data.decode())
 
         except FileNotFoundError:
             self.data = {}
@@ -85,9 +91,9 @@ class Database(object):
         # reset
         self.add_context = False
         self.dereference_occurred = False
+        self.output = []
         self.strict = False
         self.write_needed = False
-        self.output = []
 
     def action(self, args):
         ''' list of string -> none
@@ -119,8 +125,9 @@ class Database(object):
             if self._queue_write:
 
                 # write the updated values back out
-                with open(self.path, 'w') as filep:
-                    json.dump(self.data, filep, sort_keys=True)
+                with open(self.path, 'wb') as filep:
+                    data = json.dumps(self.data, separators=(',', ':'))
+                    filep.write(zlib.compress(data.encode()))
 
                 self._queue_write = False
 

@@ -337,7 +337,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             return Node.skip_query, False
 
         # try to detect read only messages
-        if not set(data).intersection(database.write_ops):
+        if not set(data).intersection(database.WRITE_OPS):
             return data, False
 
         return data, True

@@ -19,14 +19,14 @@ import zlib
 from apocrypha.exceptions import DatabaseError
 
 
-operators = {
+OPERATORS = {
     '=', '+', '-', '@', '-k', '--keys', '-e', '--edit', '-s',
     '--set', '-d', '--del', '-p', '--pop'}
 
-read_ops = {
+READ_OPS = {
     '-e', '--edit', '-k', '--keys'}
 
-write_ops = operators - read_ops
+WRITE_OPS = OPERATORS - READ_OPS
 
 
 class Database(object):
@@ -110,7 +110,7 @@ class Database(object):
         # do not cache if context was added, a dereference was required to
         # get the result or the query contained a write operator
         cache = not (self.add_context or self.dereference_occurred)
-        cache = cache and not write_ops.intersection(set(args))
+        cache = cache and not WRITE_OPS.intersection(set(args))
 
         if cache:
             self.cache[key] = self.output
@@ -208,7 +208,7 @@ class Database(object):
             left = keys[i - 1]      # string
             right = keys[i + 1:]    # list of string
 
-            if key in operators:
+            if key in OPERATORS:
                 if key == '=':
                     self._assign(last_base, left, right)
                     return

@@ -1,0 +1,7 @@
+language: python
+python:
+  - "3.6"
+install: pip install flake8 pylint
+script: 
+  - pylint --reports=n apocrypha/*py
+  - flake8 apocrypha/*.py

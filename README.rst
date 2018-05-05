@@ -2,6 +2,9 @@
 Apocrypha
 =========
 
+.. image:: https://travis-ci.org/Gandalf-/apocrypha.svg?branch=master
+    :target: https://travis-ci.org/Gandalf-/apocrypha
+
 Apocrypha is a lightweight, flexible JSON server and client written in Python
 3. It includes a client library for easy interaction through Python, but it's
 simple query format allows APIs to easily written in other languages.

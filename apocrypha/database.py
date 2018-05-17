@@ -186,7 +186,7 @@ class Database(object):
 
         if self.headless:
             self.output += [message]
-            raise DatabaseError(message)
+            raise DatabaseError(message + '\n')
 
         print(message, file=sys.stderr)
         sys.exit(1)
@@ -434,17 +434,17 @@ class Database(object):
         if not base[left]:
             base[left] = right[0] if len(right) == 1 else right
 
-        # value exists but is a str, create list and add
-        elif ltype == str:
-            base[left] = [base[left]] + right
+        # attempt to append to dictionary, error
+        elif ltype == dict:
+            self._error('cannot append to a dictionary')
 
         # left and right are lists
         elif ltype == list:
             base[left] += right
 
-        # attempt to append to dictionary, error
+        # value exists but is a singleton, create list and add
         else:
-            self._error('cannot append to a dictionary')
+            base[left] = [base[left]] + right
 
         self.write_needed = True
 
@@ -493,22 +493,35 @@ class Database(object):
 
         remove all elements in the right from the left
         '''
-        if not isinstance(base[left], list):
-            self._error(
-                'cannot subtract from non-list. {a} - {b}, {a} :: {t}'
-                .format(a=base[left],
-                        b=right,
-                        t=type(base[left]).__name__))
+        if left not in base:
+            self._error('{a} not in top level.'.format(a=left))
 
-        try:
+        # list
+        if isinstance(base[left], list):
             for item in right:
+                if item not in base[left]:
+                    self._error('{a} not in {b}.'.format(a=item, b=left))
+
                 base[left].remove(item)
 
-        except ValueError:
-            self._error('{a} not in {b}.'.format(a=right, b=left))
+            if len(base[left]) == 1:
+                base[left] = base[left][0]
 
-        if len(base[left]) == 1:
-            base[left] = base[left][0]
+        # dict
+        elif isinstance(base[left], dict):
+            for item in right:
+                if item not in base[left]:
+                    self._error('{a} not in {b}.'.format(a=item, b=left))
+
+                del base[left][item]
+
+        # singleton
+        else:
+            for item in right:
+                if item != base[left]:
+                    self._error('{a} not in {b}.'.format(a=item, b=left))
+
+                del base[left]
 
         self.write_needed = True
 

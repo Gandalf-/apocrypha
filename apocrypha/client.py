@@ -68,7 +68,7 @@ class Client(object):
 
         elif cast:
             try:
-                if isinstance(result, str):
+                if not isinstance(result, (list, dict,)):
                     result = [result]
                 return cast(result)
 

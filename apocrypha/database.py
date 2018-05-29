@@ -363,7 +363,7 @@ class Database(object):
             base = context + ' = '
 
         # string
-        if value and isinstance(value, str):
+        if isinstance(value, str):
             if value[0] == '!':
                 value = value[1:]
                 self._dereference(value, [])
@@ -371,7 +371,7 @@ class Database(object):
                 result += [base + str(value)]
 
         # list
-        elif value and isinstance(value, list):
+        elif isinstance(value, list):
             for elem in value:
                 if elem and isinstance(elem, str) and elem[0] == '!':
                     elem = elem[1:]
@@ -418,6 +418,9 @@ class Database(object):
         '''
         # single = string, multi = list
         right = right[0] if len(right) == 1 else right
+
+        if base[left] == right:
+            return
 
         base[left] = right
         self.write_needed = True
@@ -477,6 +480,8 @@ class Database(object):
             self._error('malformed json')
 
         if base:
+            if base[left] == right:
+                return
             base[left] = right
         else:
             # global overwrite
@@ -530,7 +535,10 @@ class Database(object):
 
         display the result then remove it atomically
         '''
-        if isinstance(base[left], list):
+        if not base[left]:
+            return
+
+        elif isinstance(base[left], list):
             self._display(base[left].pop())
             self.write_needed = True
 

@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 
 # pylint: disable=protected-access
+# pylint: disable=no-self-use
+# pylint: disable=missing-docstring
 
 import unittest
-from apocrypha.core import Apocrypha, ApocryphaError
+
+import apocrypha.database
+from apocrypha.database import WRITE_OPS, READ_OPS
+from apocrypha.exceptions import DatabaseError
 
 
 testdb = 'test/test-db.json'
+
+
+def Database(path):
+    return apocrypha.database.Database(path, stateless=True)
 
 
 def run(commands, add_context=False):
@@ -15,7 +24,7 @@ def run(commands, add_context=False):
     runs the provided commands on a new Apocrypha instance, and then returns
     the instance for inspection
     '''
-    a = Apocrypha(testdb)
+    a = Database(testdb)
     a.add_context = add_context
 
     for c in commands:
@@ -24,28 +33,28 @@ def run(commands, add_context=False):
     return a
 
 
-class TestApocrypha(unittest.TestCase):
+class TestDatabase(unittest.TestCase):
 
     def test_basics(self):
         '''
         we can open the database and nothing explodes
         '''
-        Apocrypha(testdb)
+        Database(testdb)
 
     def test_no_db(self):
-        a = Apocrypha('file-that-does-not-exist')
-        self.assertEqual(a.db, {})
+        a = Database('file-that-does-not-exist')
+        self.assertEqual(a.data, {})
 
     def test_bad_db(self):
-        with self.assertRaises(ApocryphaError):
-            Apocrypha('test/test_core.py')
+        with self.assertRaises(DatabaseError):
+            Database('test/test_core.py')
 
     def test_index(self):
         '''
         $ d a
         123
         '''
-        a = Apocrypha(testdb)
+        a = Database(testdb)
         a.action(['a', '=', '123'])
         a.action(['a'])
         self.assertEqual(a.output, ['123'])
@@ -55,7 +64,7 @@ class TestApocrypha(unittest.TestCase):
         $ d sub apple
         red
         '''
-        a = Apocrypha(testdb)
+        a = Database(testdb)
         a.action(['sub', 'apple'])
         self.assertEqual(a.output, ['red'])
 
@@ -66,21 +75,23 @@ class TestApocrypha(unittest.TestCase):
         $ d !two
         a b c
         '''
-        a = Apocrypha(testdb)
+        a = Database(testdb)
         a.action(['!colors'])
         self.assertEqual(a.output, ['nice'])
 
     def test_context(self):
         a = run([
             ['unique', 'two', 'three', '=', '2'],
-            ['unique', 'three', 'four' '=', '2'],
+            # ['unique', 'three', 'four' '=', '2'],
             ['@', '2'],
         ], add_context=True)
 
-        self.assertEqual(a.output, ['unique = two = three'])
+        self.assertEqual(
+            a.output,
+            ['unique two three = 2'])
 
 
-class TestApocryphaAssignDelete(unittest.TestCase):
+class TestDatabaseAssignDelete(unittest.TestCase):
 
     def test_assign(self):
         '''
@@ -88,9 +99,9 @@ class TestApocryphaAssignDelete(unittest.TestCase):
         $ d one
         two
         '''
-        a = Apocrypha(testdb)
+        a = Database(testdb)
         a.action(['assign', '=', '123'])
-        self.assertEqual(a.db['assign'], '123')
+        self.assertEqual(a.data['assign'], '123')
 
     def test_delete(self):
         '''
@@ -98,9 +109,9 @@ class TestApocryphaAssignDelete(unittest.TestCase):
         $ d one --del
         $ d one
         '''
-        a = Apocrypha(testdb)
+        a = Database(testdb)
         a.action(['removable', '--del'])
-        self.assertFalse('removable' in a.db)
+        self.assertFalse('removable' in a.data)
 
     def test_assign_through_reference(self):
         '''
@@ -111,14 +122,14 @@ class TestApocryphaAssignDelete(unittest.TestCase):
         $ d three
         four
         '''
-        a = Apocrypha(testdb)
+        a = Database(testdb)
 
         args = ['!colors', '=', 'hello']
         a.action(args)
 
-        self.assertEqual(a.db['green'], 'hello')
-        self.assertEqual(a.db['blue'], 'hello')
-        self.assertEqual(a.db['yellow'], 'hello')
+        self.assertEqual(a.data['green'], 'hello')
+        self.assertEqual(a.data['blue'], 'hello')
+        self.assertEqual(a.data['yellow'], 'hello')
 
     def test_dereference_list(self):
 
@@ -158,12 +169,12 @@ class TestApocryphaAssignDelete(unittest.TestCase):
             ['!animals', 'legs', '--del']
         ])
 
-        self.assertEqual(a.db['wolf'], {})
-        self.assertEqual(a.db['octopus'], {})
-        self.assertEqual(a.db['bird'], {})
+        self.assertEqual(a.data['wolf'], {})
+        self.assertEqual(a.data['octopus'], {})
+        self.assertEqual(a.data['bird'], {})
 
 
-class TestApocryphaSymlink(unittest.TestCase):
+class TestDatabaseSymlink(unittest.TestCase):
 
     def test_symlink(self):
 
@@ -189,7 +200,7 @@ class TestApocryphaSymlink(unittest.TestCase):
         '''
         cannot assign through symlinks
         '''
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             run([
                 ['one', '=', '!two', '!three'],
                 ['one', 'four', '=', 'apple'],
@@ -199,7 +210,7 @@ class TestApocryphaSymlink(unittest.TestCase):
         '''
         index through a list of symlink
         '''
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             run([
                 ['one', '=', '!two', '!three'],
                 ['two', 'sub', '=', 'apple'],
@@ -231,7 +242,7 @@ class TestApocryphaSymlink(unittest.TestCase):
         self.assertEqual(a.output, [])
 
 
-class TestApocryphaAppend(unittest.TestCase):
+class TestDatabaseAppend(unittest.TestCase):
 
     def test_append_create(self):
         ''' appending to a key that doesn't exist yet
@@ -242,7 +253,7 @@ class TestApocryphaAppend(unittest.TestCase):
         ])
 
         self.assertEqual(a.output, ['hello'])
-        self.assertTrue(isinstance(a.db['unique'], str))
+        self.assertTrue(isinstance(a.data['unique'], str))
 
     def test_append_create_with_space(self):
         ''' appending to a key that doesn't exist yet
@@ -253,7 +264,7 @@ class TestApocryphaAppend(unittest.TestCase):
         ])
 
         self.assertEqual(a.output, ['hello there'])
-        self.assertTrue(isinstance(a.db['unique'], str))
+        self.assertTrue(isinstance(a.data['unique'], str))
 
     def test_append_to_string(self):
         '''
@@ -266,7 +277,7 @@ class TestApocryphaAppend(unittest.TestCase):
         ])
 
         self.assertEqual(a.output, ['hello there', 'apple sauce'])
-        self.assertTrue(isinstance(a.db['unique'], list))
+        self.assertTrue(isinstance(a.data['unique'], list))
 
     def test_append_to_list(self):
         a = run([
@@ -277,10 +288,10 @@ class TestApocryphaAppend(unittest.TestCase):
         ])
 
         self.assertEqual(a.output, ['a', 'b', 'c'])
-        self.assertTrue(isinstance(a.db['unique'], list))
+        self.assertTrue(isinstance(a.data['unique'], list))
 
     def test_append_to_dict(self):
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             run([
                 ['dict', 'a', '=', '1'],
                 ['dict', 'b', '=', '1'],
@@ -288,7 +299,7 @@ class TestApocryphaAppend(unittest.TestCase):
             ])
 
 
-class TestApocryphaRemove(unittest.TestCase):
+class TestDatabaseRemove(unittest.TestCase):
 
     def test_remove_string(self):
         '''
@@ -299,58 +310,48 @@ class TestApocryphaRemove(unittest.TestCase):
             ['list', '-', 'a'],
         ])
 
-        self.assertEqual(a.db['list'], ['b', 'c'])
+        self.assertEqual(a.data['list'], ['b', 'c'])
 
     def test_remove_string_to_string(self):
-        '''
-        '''
         a = run([
             ['list', '=', 'a', 'b', 'c'],
             ['list', '-', 'a'],
             ['list', '-', 'b'],
         ])
 
-        self.assertEqual(a.db['list'], 'c')
+        self.assertEqual(a.data['list'], 'c')
 
     def test_remove_from_dict(self):
-        '''
-        '''
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             run([
                 ['list', 'a', '=', 'a', 'b', 'c'],
                 ['list', '-', 'a'],
             ])
 
     def test_remove_from_string(self):
-        '''
-        '''
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             run([
                 ['list', '=', 'c'],
                 ['list', '-', 'a'],
             ])
 
     def test_remove_non_existant(self):
-        '''
-        '''
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             run([
                 ['new list', 'a', '=', 'a', 'b', 'c'],
                 ['new list', 'a', '-', 'd'],
             ])
 
     def test_remove_multi(self):
-        '''
-        '''
         a = run([
             ['list', '=', 'a', 'b', 'c'],
             ['list', '-', 'a', 'b'],
         ])
 
-        self.assertEqual(a.db['list'], 'c')
+        self.assertEqual(a.data['list'], 'c')
 
 
-class TestApocryphaKeys(unittest.TestCase):
+class TestDatabaseKeys(unittest.TestCase):
 
     def test_keys_on_dict(self):
         '''
@@ -370,7 +371,7 @@ class TestApocryphaKeys(unittest.TestCase):
         '''
         error to request keys on a list
         '''
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             run([
                 ['list', '=', 'a', 'b'],
                 ['list', '--keys'],
@@ -380,14 +381,14 @@ class TestApocryphaKeys(unittest.TestCase):
         '''
         error to request keys on a value
         '''
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             run([
                 ['value', '=', 'b'],
                 ['value', '--keys'],
             ])
 
 
-class TestApocryphaEdit(unittest.TestCase):
+class TestDatabaseEdit(unittest.TestCase):
     '''
     d apple --edit
 
@@ -432,19 +433,16 @@ class TestApocryphaEdit(unittest.TestCase):
             a.output, ['{}'])
 
 
-class TestApocryphaSet(unittest.TestCase):
+class TestDatabaseSet(unittest.TestCase):
     '''
     d apple --set '["a", "b", "c"]'
     '''
 
     def test_set_global(self):
-        a = run([
-            ['--set', '["a", "b", "c"]'],
+        run([
+            ['--set', '{"a": 1}'],
             []
         ])
-
-        self.assertEqual(
-            a.output, ['a', 'b', 'c'])
 
     def test_set_list(self):
         a = run([
@@ -485,15 +483,15 @@ class TestApocryphaSet(unittest.TestCase):
             a.output, ['hello'])
 
     def test_set_json_error(self):
-        a = Apocrypha(testdb)
+        a = Database(testdb)
 
         args = ['broken', '--set', 'gobbeldy gook']
 
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             a.action(args)
 
 
-class TestApocryphaSearch(unittest.TestCase):
+class TestDatabaseSearch(unittest.TestCase):
 
     def test_search_list(self):
         a = run([
@@ -503,7 +501,7 @@ class TestApocryphaSearch(unittest.TestCase):
         ])
 
         self.assertEqual(
-            a.output, ['list'])
+            a.output, ['list = needle'])
 
     def test_search_dict(self):
         a = run([
@@ -513,7 +511,7 @@ class TestApocryphaSearch(unittest.TestCase):
         ])
 
         self.assertEqual(
-            a.output, ['cobbler'])
+            a.output, ['blue cobbler = squid'])
 
     def test_error_search_singleton(self):
         a = run([
@@ -522,30 +520,30 @@ class TestApocryphaSearch(unittest.TestCase):
         ])
 
         self.assertEqual(
-            a.output, ['value'])
+            a.output, ['value = needle'])
 
 
-class TestApocryphaErrors(unittest.TestCase):
+class TestDatabaseErrors(unittest.TestCase):
 
     def test_list_subtract_error(self):
-        a = Apocrypha(testdb)
+        a = Database(testdb)
 
         args = ['list', '-', 'applesauce']
 
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             a.action(args)
 
     def test_list_subtract_non_list(self):
-        a = Apocrypha(testdb)
+        a = Database(testdb)
 
         args = ['green', '-', 'applesauce']
 
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             a.action(args)
 
     def test_index_into_value(self):
 
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             run([
                 ['green', 'nice', 'failure']
             ])
@@ -554,7 +552,7 @@ class TestApocryphaErrors(unittest.TestCase):
 class TestCache(unittest.TestCase):
 
     def test_add(self):
-        a = Apocrypha(testdb)
+        a = Database(testdb)
 
         a.output = 'value'
         a._maybe_cache(['key'])
@@ -563,7 +561,7 @@ class TestCache(unittest.TestCase):
             a.cache, {('key',): 'value'})
 
     def test_add_deep(self):
-        a = Apocrypha(testdb)
+        a = Database(testdb)
 
         a.output = 'value'
         a._maybe_cache(['apple', 'blue', 'berry'])
@@ -572,12 +570,12 @@ class TestCache(unittest.TestCase):
             a.cache, {('apple', 'blue', 'berry'): 'value'})
 
     def test_add_read_op(self):
-        a = Apocrypha(testdb)
+        a = Database(testdb)
 
         a.output = 'value'
         a._maybe_cache(['key'])
 
-        for op in Apocrypha.read_ops:
+        for op in READ_OPS:
             a._maybe_cache(['apple', op])
 
         output = {
@@ -588,159 +586,11 @@ class TestCache(unittest.TestCase):
         self.assertEqual(a.cache, output)
 
     def test_write_op_not_added(self):
-        a = Apocrypha(testdb)
+        a = Database(testdb)
 
-        for op in Apocrypha.write_ops:
+        for op in WRITE_OPS:
             a._maybe_cache(['apple', op, 'value'])
             self.assertEqual(a.cache, {})
-
-    @unittest.skip('using simple caching')
-    def test_invalidate_with_overwrite(self):
-        a = Apocrypha(testdb)
-
-        a.output = 'value'
-        a._maybe_cache(['key'])
-        self.assertEqual(a.cache, {('key',): 'value'})
-
-        a.write_needed = True
-        # a.maybe_invalidate_cache(['key', '=', 'new value'])
-        self.assertEqual(a.cache, {})
-
-    @unittest.skip('using simple caching')
-    def test_invalidate_with_delete(self):
-        a = Apocrypha(testdb)
-
-        a.output = 'value'
-        a._maybe_cache(['key'])
-        self.assertEqual(a.cache, {('key',): 'value'})
-
-        a.write_needed = True
-        # a.maybe_invalidate_cache(['key', '-d'])
-        self.assertEqual(a.cache, {})
-
-    @unittest.skip('using simple caching')
-    def test_invalidate_with_set(self):
-        a = Apocrypha(testdb)
-
-        a.output = 'value'
-        a._maybe_cache(['key'])
-        self.assertEqual(a.cache, {('key',): 'value'})
-
-        a.write_needed = True
-        # a.maybe_invalidate_cache(['key', '--set', 'new value'])
-        self.assertEqual(a.cache, {})
-
-    @unittest.skip('using simple caching')
-    def test_invalidate_children(self):
-        a = Apocrypha(testdb)
-
-        a.output = 'value'
-        a._maybe_cache(['one', 'two three', 'four'])
-        a._maybe_cache(['one', 'two three'])
-        self.assertEqual(
-            a.cache,
-            {('one', 'two three', 'four'): 'value',
-             ('one', 'two three'): 'value'})
-
-        a.write_needed = True
-        # a.maybe_invalidate_cache(['one', '-d'])
-        self.assertEqual(a.cache, {})
-
-    @unittest.skip('using simple caching')
-    def test_invalidate_root_child(self):
-        '''
-        both children of a non root key are invalidated when the parent changed
-        '''
-        a = Apocrypha(testdb)
-
-        a.output = 'value'
-        a._maybe_cache(['one', 'two three', 'four'])
-        a._maybe_cache(['two', 'two three', 'five'])
-        a._maybe_cache(['three'])
-
-        self.assertEqual(
-            a.cache,
-            {('one', 'two three', 'four'): 'value',
-             ('two', 'two three', 'five'): 'value',
-             ('three',): 'value'})
-
-        a.write_needed = True
-        # a.maybe_invalidate_cache(['one', '-d'])
-        self.assertEqual(
-            a.cache,
-            {('two', 'two three', 'five'): 'value',
-             ('three',): 'value'})
-
-    @unittest.skip('using simple caching')
-    def test_invalidate_children_non_root(self):
-        '''
-        both children of a non root key are invalidated when the parent changed
-        '''
-        a = Apocrypha(testdb)
-
-        a.output = 'value'
-        a._maybe_cache(['one', 'two three', 'four'])
-        a._maybe_cache(['one', 'two three', 'five'])
-        a._maybe_cache(['one'])
-        self.assertEqual(
-            a.cache,
-            {('one', 'two three', 'four'): 'value',
-             ('one', 'two three', 'five'): 'value',
-             ('one',): 'value'})
-
-        a.write_needed = True
-        # a.maybe_invalidate_cache(['one', 'two three', '-d'])
-        self.assertEqual(a.cache, {})
-
-    @unittest.skip('using simple caching')
-    def test_invalidate_children_non_root_read_op(self):
-        '''
-        both children of a non root key are invalidated when the parent changed
-        '''
-        a = Apocrypha(testdb)
-
-        a.output = 'value'
-        a._maybe_cache(['one', 'two three', 'four'])
-        a._maybe_cache(['one', '--keys'])
-        a._maybe_cache(['one'])
-        a._maybe_cache(['two'])
-
-        a.write_needed = True
-        # a.maybe_invalidate_cache(['one', 'two three', '-d'])
-        self.assertEqual(a.cache, {('two',): 'value'})
-
-    @unittest.skip('using simple caching')
-    def test_invalidate_siblings_not_effected(self):
-        '''
-        invalidating one child doesn't affect the other children
-        '''
-        a = Apocrypha(testdb)
-
-        a.output = 'value'
-        a._maybe_cache(['one', 'two three', 'four'])
-        a._maybe_cache(['one', 'apple', 'sauce'])
-        self.assertEqual(
-            a.cache,
-            {('one', 'two three', 'four'): 'value',
-             ('one', 'apple', 'sauce'): 'value'})
-
-        a.write_needed = True
-        # a.maybe_invalidate_cache(['one', 'two three', '-d'])
-        self.assertEqual(
-            a.cache, {('one', 'apple', 'sauce'): 'value'})
-
-
-class TestApocryphaExtensive(unittest.TestCase):
-
-    def test_workflow_one(self):
-        run([
-            ['a', '--del'],
-            ['a', 'b', 'c', 'd', 'e', 'f', 'g', '=', '!b'],
-            ['a']
-        ])
-
-        # we survived
-        self.assertTrue(1 == 1)
 
 
 if __name__ == '__main__':

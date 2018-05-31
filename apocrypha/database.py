@@ -38,9 +38,9 @@ class Database(object):
     - symbolic links to other keys at any level
     '''
 
-    def __init__(self, path, headless=True):
-        ''' string, maybe bool -> Apocrypha
-
+    def __init__(self, path: str, stateless: bool = False,
+                 headless: bool = True) -> object:
+        '''
         @path           full path to the database json file
         @headless       don't write to stdout, save in self.output
         '''
@@ -75,11 +75,11 @@ class Database(object):
         self.writer_running = threading.Event()
         self.writer_running.set()
         self._writer_thread = threading.Thread(target=self._writer)
-        self._writer_thread.start()
+        if not stateless:
+            self._writer_thread.start()
 
-    def post_action(self):
-        ''' none -> none
-
+    def post_action(self) -> None:
+        '''
         cache, normalize, queue a disk write, reset internal values
         '''
         self._normalize(self.data)
@@ -95,15 +95,15 @@ class Database(object):
         self.strict = False
         self.write_needed = False
 
-    def action(self, args):
-        ''' list of string -> none
-
+    def action(self, args: [str]) -> None:
+        '''
         may be overridden for custom behavior such as utilizing self.cache or
         '''
         self._action(self.data, args)
 
-    def _maybe_cache(self, args):
-        ''' list of string -> none
+    def _maybe_cache(self, args: [str]) -> None:
+        '''
+        check if we can cache the input and output of this query
         '''
         key = tuple(args)
 
@@ -115,8 +115,8 @@ class Database(object):
         if cache:
             self.cache[key] = self.output
 
-    def _writer(self):
-        ''' none -> none
+    def _writer(self) -> None:
+        '''
         callback for writer_thread
         '''
         while self.writer_running.is_set():
@@ -131,9 +131,8 @@ class Database(object):
 
                 self._queue_write = False
 
-    def _normalize(self, data):
-        ''' dict -> bool
-
+    def _normalize(self, data: dict) -> bool:
+        '''
         @data     level of the database to normalize
 
         Finds lists of a single element and converts them into singletons,
@@ -173,9 +172,8 @@ class Database(object):
 
         return child_removed
 
-    def _error(self, message):
-        ''' string -> none | IO
-
+    def _error(self, message: str) -> None:
+        '''
         @message    description of the error that occurred
         #impure     self.output
 
@@ -191,9 +189,8 @@ class Database(object):
         print(message, file=sys.stderr)
         sys.exit(1)
 
-    def _action(self, base, keys):
-        ''' dict, list of string, maybe bool -> none
-
+    def _action(self, base: dict, keys: [str]) -> None:
+        '''
         @base   current level of the database
         @keys   keys or arguments to apply
 
@@ -299,9 +296,8 @@ class Database(object):
 
         self._display(base, context=' = '.join(keys[:-1]))
 
-    def _dereference(self, base, args):
-        ''' dict, list of string, bool -> none
-
+    def _dereference(self, base: dict, args: [str]) -> None:
+        '''
         @base   current object that we're working with, corresponds to a
                 "level" in the database
         @args   list of database keys to check
@@ -342,12 +338,10 @@ class Database(object):
                 else:
                     target = reference.split(' ')
 
-                self._action(
-                    self.data, target + args)
+                self._action(self.data, target + args)
 
-    def _display(self, value, context=None):
-        ''' any, maybe string -> none
-
+    def _display(self, value: any, context: str = None) -> None:
+        '''
         @value      string, list or dict to add to output
         @context    additional information to include in output
 
@@ -385,9 +379,8 @@ class Database(object):
 
         self.output += result
 
-    def _search(self, base, key, context):
-        ''' any, string, list of string -> none
-
+    def _search(self, base: dict, target: str, context: [str]) -> None:
+        '''
         @base       the object to search through
         @key        value to find
         @context    additional information to pass onto _display()
@@ -395,25 +388,27 @@ class Database(object):
         Recursively search through the base dictionary, print out all the keys
         that have the given value '''
 
+        self.add_context = True
+
         # list
         if isinstance(base, list):
-            for _ in [_ for _ in base if _ == key]:
-                self._display(
-                    context[-1],
-                    context=' = '.join(context[:-1]))
+            if target in base:
+                self._display(target, context=' '.join(context))
             return
 
         # dict
-        for k, value in base.items():
-            if value == key:
-                self._display(k, context=' = '.join(context))
+        for key, value in base.items():
+            if target == value:
+                self._display(target, context=' '.join(context + [key]))
+
+            elif target == key:
+                self._display(target, context=' '.join(context))
 
             elif isinstance(value, (dict, list)):
-                self._search(value, key, context + [k])
+                self._search(value, target, context + [key])
 
-    def _assign(self, base, left, right):
-        ''' dict of any, string, list of string -> none
-
+    def _assign(self, base: dict, left: str, right: [str]) -> None:
+        '''
         direct assignment, right side may be a list or string
         '''
         # single = string, multi = list
@@ -425,9 +420,8 @@ class Database(object):
         base[left] = right
         self.write_needed = True
 
-    def _append(self, base, left, right):
-        ''' dict of any, string, list of string -> none
-
+    def _append(self, base: dict, left: str, right: [str]) -> None:
+        '''
         append a value or values to a list or string
         may create a new value
         '''
@@ -451,9 +445,8 @@ class Database(object):
 
         self.write_needed = True
 
-    def _keys(self, base, left):
-        ''' any -> none
-
+    def _keys(self, base: dict, left: str) -> None:
+        '''
         print the keys defined at this level
         '''
         if not isinstance(base, dict):
@@ -461,12 +454,10 @@ class Database(object):
                 'cannot retrieve keys non-dict. {a} :: {t}'
                 .format(a=left, t=type(base).__name__))
 
-        for base_key in sorted(base.keys()):
-            self._display(base_key)
+        self._display(sorted(base.keys()))
 
-    def _set(self, base, left, right):
-        ''' dict of any, string, JSON string
-
+    def _set(self, base: dict, left: str, right: str) -> None:
+        '''
         @base  current level of the database
         @left  index to modify
         @right new value of the index, as a JSON string
@@ -485,11 +476,14 @@ class Database(object):
             base[left] = right
         else:
             # global overwrite
-            self.data = right
+            if isinstance(right, dict):
+                self.data = right
+            else:
+                self._error('top level must be of type dict')
 
         self.write_needed = True
 
-    def _remove(self, base, left, right):
+    def _remove(self, base: dict, left: str, right: [str]) -> None:
         ''' dict of any, string, list of string
 
         @base  current level of the database
@@ -530,9 +524,8 @@ class Database(object):
 
         self.write_needed = True
 
-    def _pop(self, base, left):
-        ''' dict of any, string, list of string
-
+    def _pop(self, base: dict, left: str) -> None:
+        '''
         display the result then remove it atomically
         '''
         if not base[left]:

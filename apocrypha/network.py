@@ -5,17 +5,18 @@ Network functions, implements simple protocol that sends the size of the
 message before the message
 '''
 
+import socket
 import struct
+from typing import Tuple
 
 
-def write(sock, message):
-    ''' socket, string -> none
-
+def write(sock: socket.socket, message: str) -> bool:
+    '''
     get the length of the message, pack it, prepend to the message and send it
     '''
     try:
-        message = struct.pack('>I', len(message)) + message.encode('utf-8')
-        sock.sendall(message)
+        raw_message = struct.pack('>I', len(message)) + message.encode('utf-8')
+        sock.sendall(raw_message)
 
     except (BrokenPipeError, UnicodeDecodeError):
         return False
@@ -24,13 +25,12 @@ def write(sock, message):
         return True
 
 
-def read(sock):
-    ''' socket -> any, bool
-
+def read(sock: socket.socket) -> Tuple[str, bool]:
+    '''
     read the number of bytes in the message, unpack it, then read that many
     bytes and pass the result back to the caller
     '''
-    failure = (None, True)
+    failure = ('', True)
 
     raw_msg_len, error = _recv_all(sock, 4)
     if error or not raw_msg_len:
@@ -44,7 +44,7 @@ def read(sock):
     return result.decode('utf-8'), False
 
 
-def _recv_all(sock, n_bytes):
+def _recv_all(sock: socket.socket, n_bytes: int) -> Tuple[bytes, bool]:
     '''
     read n bytes from a socket
     '''
@@ -55,7 +55,7 @@ def _recv_all(sock, n_bytes):
             fragment = sock.recv(n_bytes - len(data))
         except ConnectionError:
             print('lost connection to remote')
-            return None, True
+            return b'', True
 
         if not fragment:
             break

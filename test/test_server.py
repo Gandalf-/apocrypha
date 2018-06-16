@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 
-import apocrypha.client
+# pylint: disable=protected-access
+# pylint: disable=no-self-use
+# pylint: disable=missing-docstring
+# pylint: disable=too-many-public-methods
+
 import threading
 import unittest
 
-from apocrypha.core import ApocryphaError
-from apocrypha.server import ApocryphaServer, ApocryphaHandler, Server
+import apocrypha.client
+from apocrypha.exceptions import DatabaseError
+from apocrypha.server import ServerDatabase, ServerHandler, Server
 
 client = apocrypha.client.Client(port=49999)
 
@@ -13,8 +18,7 @@ client = apocrypha.client.Client(port=49999)
 def query(args, raw=False):
     ''' list of string -> string
     '''
-    result = client.query(args, raw=raw)
-    return result
+    return client.query(args, interpret=raw)
 
 
 class TestServer(unittest.TestCase):
@@ -29,19 +33,20 @@ class TestServer(unittest.TestCase):
         create an Apocrypha instance and server to handle connections
         run the server in a thread so test cases may run
         '''
-        # create the ApocryphaServer instance, which inherits from Apocrypha
-        TestServer.database = ApocryphaServer(
-                'test/test-db.json')
+        # create the ServerDatabase instance, which inherits from Apocrypha
+        TestServer.database = ServerDatabase(
+            'test/test-db.json',
+            stateless=True)
 
         # Create the tcp server
         host, port = '0.0.0.0', 49999
         TestServer.server = Server(
-            (host, port), ApocryphaHandler,
+            (host, port), ServerHandler,
             TestServer.database, quiet=True)
 
         # start the server
         TestServer.server_thread = threading.Thread(
-                target=TestServer.server.serve_forever)
+            target=TestServer.server.serve_forever)
 
         TestServer.server_thread.start()
         TestServer.db = apocrypha.client.Client(port=49999)
@@ -51,6 +56,9 @@ class TestServer(unittest.TestCase):
         '''
         shutdown the server
         '''
+        TestServer.server.teardown()
+        TestServer.server.socket.close()
+        print('teardown done')
         TestServer.server_thread.join(1)
         print('done')
 
@@ -77,8 +85,8 @@ class TestServer(unittest.TestCase):
         query(['a', 'b', 'c', 'd', 'e'])
 
         self.assertIn(
-                ('a', 'b', 'c', 'd', 'e'),
-                TestServer.database.cache)
+            ('a', 'b', 'c', 'd', 'e'),
+            TestServer.database.cache)
 
     def test_cache_invalidate(self):
         query(['pizza', '=', 'sauce'])
@@ -138,7 +146,7 @@ class TestServer(unittest.TestCase):
 
         client.set('one layer', 'two layer', value='cake')
         client.set('one layer', 'apple layer', value='sauce')
-        print(TestServer.database.db)
+        print(TestServer.database.data)
 
         self.assertEqual(
             client.get('one layer', 'two layer'), 'cake')
@@ -194,7 +202,7 @@ class TestServer(unittest.TestCase):
         self.assertEqual(result, ['sauce'])
 
     def test_strict(self):
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             query(['-s', 'gadzooks'])
 
     def test_context(self):
@@ -204,15 +212,15 @@ class TestServer(unittest.TestCase):
     def test_query_json_dict(self):
         result = query(['octopus'], raw=True)
         self.assertEqual(result, {'legs': 8})
-        self.assertTrue(type(result) == dict)
+        self.assertTrue(isinstance(result, dict))
 
     def test_query_json_list(self):
         result = query(['colors'], raw=True)
-        self.assertTrue(type(result) == list)
+        self.assertTrue(isinstance(result, list))
 
     def test_query_json_string(self):
         result = query(['apple'], raw=True)
-        self.assertTrue(type(result) == str)
+        self.assertTrue(isinstance(result, str))
 
     # client tests - Client
     def test_get_string(self):
@@ -256,7 +264,7 @@ class TestServer(unittest.TestCase):
             'abc')
 
     def test_get_error(self):
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             TestServer.db.get('animals', 'octopus')
 
     def test_get_cast_to_list(self):
@@ -275,7 +283,7 @@ class TestServer(unittest.TestCase):
             {'wolf', 'octopus', 'bird'})
 
     def test_get_cast_to_error(self):
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             TestServer.db.get('animals', cast=dict)
 
     # keys
@@ -288,7 +296,7 @@ class TestServer(unittest.TestCase):
             TestServer.db.keys('does not exist', 'foobar'), [])
 
     def test_keys_error(self):
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             TestServer.db.keys('animals', 'octopus')
 
     # remove
@@ -307,7 +315,7 @@ class TestServer(unittest.TestCase):
             'c')
 
     def test_remove_error(self):
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             TestServer.db.remove('octopus', value='sandwich')
 
     # append
@@ -346,11 +354,11 @@ class TestServer(unittest.TestCase):
             ['a', 'b'])
 
     def test_append_error(self):
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             TestServer.db.append('octopus', value='sandwich')
 
     def test_append_type_error(self):
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             TestServer.db.append('octopus', value={'a': 1})
 
     # set
@@ -367,7 +375,7 @@ class TestServer(unittest.TestCase):
             ['hello', 'there'])
 
     def test_set_error(self):
-        with self.assertRaises(ApocryphaError):
+        with self.assertRaises(DatabaseError):
             TestServer.db.set('hello', value=set())
 
     # delete
@@ -384,3 +392,4 @@ class TestServer(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+    print('hmmm')

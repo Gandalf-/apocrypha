@@ -20,12 +20,12 @@ class ServerDatabase(database.Database):
     wrapper around Database that provides caching
     '''
 
-    def __init__(self, path):
+    def __init__(self, path, stateless=False):
         ''' filepath -> ApocryphaServer
 
         @path       full path to the database json file
         '''
-        database.Database.__init__(self, path)
+        database.Database.__init__(self, path, stateless=stateless)
 
     def action(self, args):
         ''' list of string -> none

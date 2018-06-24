@@ -16,6 +16,10 @@ import threading
 import time
 import zlib
 
+from typing import List, Any, Union
+from typing import Dict     # noqa: F401 pylint: disable=unused-import
+from typing import Tuple    # noqa: F401 pylint: disable=unused-import
+
 from apocrypha.exceptions import DatabaseError
 
 
@@ -39,7 +43,7 @@ class Database(object):
     '''
 
     def __init__(self, path: str, stateless: bool = False,
-                 headless: bool = True) -> object:
+                 headless: bool = True) -> None:
         '''
         @path           full path to the database json file
         @stateless      never write out changes to disk
@@ -53,19 +57,19 @@ class Database(object):
         self.strict = False
         self.lock = threading.Lock()
 
-        self.output = []    # list of string
-        self.cache = {}     # dict of tuple of string
+        self.output = []    # type: List[str]
+        self.cache = {}     # type: Dict[Tuple, List[str]]
 
         self._queue_write = False
 
         try:
             with open(path, 'rb') as filep:
-                data = filep.read()
+                raw_data = filep.read()
                 try:
-                    data = zlib.decompress(data).decode()
+                    data = zlib.decompress(raw_data).decode()
                     self.data = json.loads(data)
                 except zlib.error:
-                    self.data = json.loads(data.decode())
+                    self.data = json.loads(raw_data.decode())
 
         except FileNotFoundError:
             self.data = {}
@@ -96,13 +100,13 @@ class Database(object):
         self.strict = False
         self.write_needed = False
 
-    def action(self, args: [str]) -> None:
+    def action(self, args: List[str]) -> None:
         '''
         may be overridden for custom behavior such as utilizing self.cache or
         '''
         self._action(self.data, args)
 
-    def _maybe_cache(self, args: [str]) -> None:
+    def _maybe_cache(self, args: List[str]) -> None:
         '''
         check if we can cache the input and output of this query
         '''
@@ -190,7 +194,7 @@ class Database(object):
         print(message, file=sys.stderr)
         sys.exit(1)
 
-    def _action(self, base: dict, keys: [str]) -> None:
+    def _action(self, base: dict, keys: List[str]) -> None:
         '''
         @base   current level of the database
         @keys   keys or arguments to apply
@@ -200,11 +204,11 @@ class Database(object):
             - delete keys
             - assign values to keys
         '''
-        last_base = {}
+        last_base = {}  # type: Any
 
         for i, key in enumerate(keys):
-            left = keys[i - 1]      # string
-            right = keys[i + 1:]    # list of string
+            left = keys[i - 1]      # type: str
+            right = keys[i + 1:]    # type: List[str]
 
             if key in OPERATORS:
                 if key == '=':
@@ -297,7 +301,7 @@ class Database(object):
 
         self._display(base, context=' = '.join(keys[:-1]))
 
-    def _dereference(self, base: dict, args: [str]) -> None:
+    def _dereference(self, base: Any, args: List[str]) -> None:
         '''
         @base   current object that we're working with, corresponds to a
                 "level" in the database
@@ -341,7 +345,7 @@ class Database(object):
 
                 self._action(self.data, target + args)
 
-    def _display(self, value: any, context: str = None) -> None:
+    def _display(self, value: Any, context: str = None) -> None:
         '''
         @value      string, list or dict to add to output
         @context    additional information to include in output
@@ -352,7 +356,8 @@ class Database(object):
         if not value:
             return
 
-        result, base = [], ''
+        result = []  # type: List[str]
+        base = ''
 
         if context and self.add_context:
             base = context + ' = '
@@ -380,7 +385,8 @@ class Database(object):
 
         self.output += result
 
-    def _search(self, base: dict, target: str, context: [str]) -> None:
+    def _search(self, base: Union[dict, list], target: str,
+                context: List[str]) -> None:
         '''
         @base       the object to search through
         @key        value to find
@@ -408,7 +414,8 @@ class Database(object):
             elif isinstance(value, (dict, list)):
                 self._search(value, target, context + [key])
 
-    def _assign(self, base: dict, left: str, right: [str]) -> None:
+    def _assign(self, base: dict, left: str,
+                right: Union[str, List[str]]) -> None:
         '''
         direct assignment, right side may be a list or string
         '''
@@ -421,7 +428,7 @@ class Database(object):
         base[left] = right
         self.write_needed = True
 
-    def _append(self, base: dict, left: str, right: [str]) -> None:
+    def _append(self, base: dict, left: str, right: List[str]) -> None:
         '''
         append a value or values to a list or string
         may create a new value
@@ -484,7 +491,7 @@ class Database(object):
 
         self.write_needed = True
 
-    def _remove(self, base: dict, left: str, right: [str]) -> None:
+    def _remove(self, base: dict, left: str, right: List[str]) -> None:
         ''' dict of any, string, list of string
 
         @base  current level of the database

@@ -4,8 +4,11 @@
 server and handler for database
 '''
 
+import argparse
 import os
+import socket
 import socketserver
+import threading
 import time
 
 import apocrypha.database as database
@@ -65,10 +68,13 @@ class ServerHandler(socketserver.BaseRequestHandler):
 
         self.request is the TCP socket connected to the client
         '''
+        self.server.add_socket(self.request)
         client_okay = True
 
         while client_okay:
             client_okay = self._handle()
+
+        self.server.remove_socket(self.request)
 
     def _handle(self):
         ''' none -> none
@@ -152,14 +158,34 @@ class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.database = db
         self.quiet = quiet
 
+        self._lock = threading.Lock()
+        self._sockets = []
+
+    def add_socket(self, sock: socket.socket) -> None:
+        ''' safely add a socket to our list
+        '''
+        with self._lock:
+            self._sockets.append(sock)
+
+    def remove_socket(self, sock: socket.socket) -> None:
+        ''' safely remove a socket from our list
+        '''
+        with self._lock:
+            self._sockets.remove(sock)
+
     def teardown(self):
         ''' none -> none
 
         stop database writer thread, stop our own threads
         '''
-        self.database.writer_running.clear()
-        self.shutdown()
-        self.server_close()
+        with self._lock:
+            for sock in self._sockets:
+                sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
+
+            self.database.writer_running.clear()
+            self.shutdown()
+            self.server_close()
 
 
 def _now():
@@ -172,21 +198,42 @@ def main():
     '''
     create the server, handle teardown
     '''
-    # Create the tcp server
-    host = '0.0.0.0'
-    port = 9999
-    db_path = os.path.expanduser('~') + '/.db.json'
+    if 'AP_CNFG' in os.environ:
+        db_path = os.environ['AP_CNFG']
+    else:
+        db_path = os.path.expanduser('~/.db.json')
 
+    host = os.environ['AP_HOST'] if 'AP_HOST' in os.environ else '0.0.0.0'
+    port = os.environ['AP_PORT'] if 'AP_PORT' in os.environ else 9999
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument(
+        '--host', type=str, default=host,
+        help="address to listen on")
+    parser.add_argument(
+        '--port', type=int, default=port,
+        help="port to listen on")
+    parser.add_argument(
+        '--config', type=str, default=db_path,
+        help="full path to saved database")
+
+    args = parser.parse_args()
+
+    # Create the tcp server
     server = Server(
-        (host, port),
+        (args.host, args.port),
         ServerHandler,
-        ServerDatabase(db_path))
+        ServerDatabase(args.config))
 
     try:
         print('starting')
         server.serve_forever()
+
     except KeyboardInterrupt:
         print('exiting')
+
     finally:
         server.teardown()
 

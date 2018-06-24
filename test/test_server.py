@@ -58,9 +58,7 @@ class TestServer(unittest.TestCase):
         '''
         TestServer.server.teardown()
         TestServer.server.socket.close()
-        print('teardown done')
         TestServer.server_thread.join(1)
-        print('done')
 
     # server tests
     #   caching
@@ -88,6 +86,7 @@ class TestServer(unittest.TestCase):
             ('a', 'b', 'c', 'd', 'e'),
             TestServer.database.cache)
 
+    @unittest.skip('using simple caching')
     def test_cache_invalidate(self):
         query(['pizza', '=', 'sauce'])
 
@@ -100,6 +99,7 @@ class TestServer(unittest.TestCase):
         self.assertNotIn(('pizza',), TestServer.database.cache)
         self.assertNotIn((), TestServer.database.cache)
 
+    @unittest.skip('using simple caching')
     def test_cache_invalidate_parent(self):
         '''
         changing a child key invalidates all of it's parents
@@ -120,6 +120,7 @@ class TestServer(unittest.TestCase):
         self.assertNotIn(('one layer', 'two layer'), TestServer.database.cache)
         self.assertNotIn(('one layer',), TestServer.database.cache)
 
+    @unittest.skip('using simple caching')
     def test_cache_invalidate_child(self):
         '''
         changing a parent key invalidates all of it's direct children
@@ -207,7 +208,7 @@ class TestServer(unittest.TestCase):
 
     def test_context(self):
         result = query(['-c', '@', 'red'])
-        self.assertEqual(result, ['sub = apple'])
+        self.assertEqual(result, ['sub apple = red'])
 
     def test_query_json_dict(self):
         result = query(['octopus'], raw=True)
@@ -392,4 +393,3 @@ class TestServer(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-    print('hmmm')

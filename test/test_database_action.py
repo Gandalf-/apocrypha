@@ -47,7 +47,7 @@ class TestDatabase(unittest.TestCase):
 
     def test_bad_db(self):
         with self.assertRaises(DatabaseError):
-            Database('test/test_core.py')
+            Database('test/test_database_action.py')
 
     def test_index(self):
         '''

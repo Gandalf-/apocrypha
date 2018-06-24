@@ -42,6 +42,7 @@ class Database(object):
                  headless: bool = True) -> object:
         '''
         @path           full path to the database json file
+        @stateless      never write out changes to disk
         @headless       don't write to stdout, save in self.output
         '''
         self.add_context = False

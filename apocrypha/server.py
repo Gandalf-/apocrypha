@@ -118,7 +118,7 @@ class ServerHandler(socketserver.BaseRequestHandler):
             if args[0] in {'-c', '--context'}:
                 self.server.database.add_context = True
 
-            if args[0] == {'-s', '--strict'}:
+            if args[0] in {'-s', '--strict'}:
                 self.server.database.strict = True
 
             args = args[1:]

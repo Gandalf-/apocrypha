@@ -236,7 +236,7 @@ def _query(args, host='localhost', port=9999, interpret=False,
         sock.close()
 
     result = list(filter(None, result.split('\n')))
-    if result and 'error:' in result[0]:
+    if result and result[0].startswith('error: '):
         raise DatabaseError(result[0]) from None
 
     if interpret:

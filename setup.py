@@ -11,7 +11,7 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.rst')) as f:
     long_description = f.read()
 
-version = '2.0.2'
+version = '2.0.3'
 download = \
     'https://github.com/Gandalf-/apocrypha/archive/' + version + 'tar.gz'
 

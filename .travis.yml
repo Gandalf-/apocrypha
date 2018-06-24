@@ -5,6 +5,9 @@ python:
 
 install: pip install flake8 pylint typing mypy
 
+before_script:
+  - export PYTHONPATH=$PYTHONPATH:$(pwd)/apocrypha
+
 script:
   # linting
   - pylint --reports=n apocrypha/*py

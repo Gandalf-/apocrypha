@@ -2,15 +2,46 @@
 Apocrypha
 =========
 
+.. image:: https://img.shields.io/pypi/v/apocrypha.svg
+   :target: https://pypi.python.org/pypi/apocrypha
+   :alt: PyPI Version
+
+.. image:: https://img.shields.io/pypi/pyversions/apocrypha.svg
+   :target: https://pypi.python.org/pypi/apocrypha
+   :alt: Supported Python Versions
+
 .. image:: https://travis-ci.org/Gandalf-/apocrypha.svg?branch=master
     :target: https://travis-ci.org/Gandalf-/apocrypha
 
 Apocrypha is a lightweight, flexible JSON server and client written in Python
-3. It includes a client library for easy interaction through Python, but it's
+3. It includes a client library for easy interaction through Python, and it's
 simple query format allows APIs to easily written in other languages.
 
-You can install Apocrypha with pip: ``pip install apocrypha``
+You can install Apocrypha with pip: ``pip3 install apocrypha``
+
 Then you're ready to start the server: ``python3 -m apocrypha.server``
+
+Features
+========
+
+- **multithreaded** Thread safe server and client. All queries are atomic.
+
+- **caching** Writes clear the cache, any query will be served out of the
+  cache if possible.
+
+- **nosql** No schemas, no overhead, just your data in the format you
+  provided.
+
+- **json** Serve any existing JSON file to the network or start from
+  scratch. Supports unlimited nested dictionaries.
+
+- **fast** Serve up to 20,000 queries per second on cache hit heavy workloads.
+  Database is kept in memory, no disk reads are made after startup.
+
+- **persistance** Writes are queued and saved to disk once per second.
+
+- **lightweight** Less than 2,000 lines of Python and no external dependencies
+  outside of the standard library.
 
 -----
 
@@ -49,17 +80,14 @@ more examples.
 
 -----
 
-A simple client in Bash, showing the query format. Each token is separated by a
-newline, one query per request.
+A simple C client is available here_ if you want faster start up times than
+Python for client applications, like shell scripts.
 
-.. code-block:: bash
+.. _here: https://github.com/Gandalf-/DotFiles/blob/master/bin/d.c
 
-  #!/bin/bash
-
-  while [[ $1 ]]; do
-    echo "$1"
-    shift
-  done | nc localhost 9999
+The network protocol is simple: send the length of the message in bytes, then
+the message. Query elements are delimited by newlines. Each message ends in a
+newline, and newlines are included in the length calculation of the message.
 
 
 index

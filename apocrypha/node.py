@@ -10,6 +10,7 @@ abstraction of a server that allows communciation with other nodes
 import argparse
 import os
 import queue
+import socket
 import socketserver
 import threading
 import time
@@ -30,33 +31,50 @@ class NodeHandler(socketserver.BaseRequestHandler):
 
     def handle(self) -> None:
         ''' none -> none
+        '''
+        self.server.add_socket(self.request)
+        client_okay = True
+
+        while client_okay:
+            client_okay = self._handle()
+
+        self.server.remove_socket(self.request)
+
+    def _handle(self) -> None:
+        ''' none -> bool
 
         read in a loop so we can handle multiple requests
         '''
-        while True:
-            # get the query
-            data, error = network.read(self.request)
-            if error:
-                break
-            parsed = [_ for _ in data.split('\n') if _]
+        # get the query
+        data, error = network.read(self.request)
+        if error:
+            return False
+        parsed = [_ for _ in data.split('\n') if _]
 
-            with self.server.lock:
-                # check for node to node messages
-                parsed, forward = self.server.handle_node_message(parsed)
-                if parsed == Node.skip_query:
-                    continue
+        with self.server.lock:
 
-                # get result from local server
-                result = self.server.local.query(parsed)
-                result = '\n'.join(result) + '\n'
-
-                able_to_reply = network.write(self.request, result)
+            # check for node to node messages
+            parsed, forward = self.server.handle_node_message(parsed)
+            if parsed == Node.skip_query:
+                able_to_reply = network.write(self.request, '\n')
                 if not able_to_reply:
-                    break
+                    return False
 
-            # forward query on to peers
-            if forward:
-                self.server.messages.put(parsed)
+                return True
+
+            # get result from local server
+            result = self.server.local.query(parsed)
+            result = '\n'.join(result) + '\n'
+
+            able_to_reply = network.write(self.request, result)
+            if not able_to_reply:
+                return False
+
+        # forward query on to peers
+        if forward:
+            self.server.messages.put(parsed)
+
+        return True
 
 
 class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -65,6 +83,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
     potentially remote nodes
     '''
 
+    tick = 5
     skip_query = 'SKIP_QUERY'
     allow_reuse_address = True
 
@@ -109,10 +128,23 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.peer_thread.start()
 
         # node server
+        self._sockets = []
         socketserver.TCPServer.__init__(
             self,
             ('0.0.0.0', node_addr[1]),
             handler)
+
+    def add_socket(self, sock: socket.socket) -> None:
+        ''' safely add a socket to our list
+        '''
+        with self.lock:
+            self._sockets.append(sock)
+
+    def remove_socket(self, sock: socket.socket) -> None:
+        ''' safely remove a socket from our list
+        '''
+        with self.lock:
+            self._sockets.remove(sock)
 
     def forward_to_peers(self) -> None:
         ''' list of str -> None
@@ -121,16 +153,21 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         message so that it's not fowarded again
         '''
         while self.running.is_set():
-            data = self.messages.get()
+            print('forward_to_peers')
+            try:
+                data = self.messages.get(timeout=Node.tick)
 
-            for peer in list(self.peers.values()):
-                print('forwarding', data, 'to', peer.host, peer.port)
-                try:
-                    self._recoverable_query(peer, ['--node'] + data)
-                except exceptions.FailedQuery:
-                    pass
+                for peer in list(self.peers.values()):
+                    print('forwarding', data, 'to', peer.host, peer.port)
+                    try:
+                        self._recoverable_query(peer, ['--node'] + data)
+                    except exceptions.FailedQuery:
+                        pass
 
-            self.messages.task_done()
+                self.messages.task_done()
+
+            except queue.Empty:
+                pass
 
     def monitor_peers(self) -> None:
         ''' none -> none
@@ -138,17 +175,25 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         check peers for more peers to join, connect to all pending peers
         '''
         while self.running.is_set():
+            print('monitor_peers')
             self._check_for_peers()
             self._connect_to_peers()
-            time.sleep(5)
+            time.sleep(Node.tick)
 
     def teardown(self):
         ''' none -> none
 
         tell our own threads to stop, shutdown the server
         '''
-        self.running.clear()
-        self.server.teardown()
+        with self.lock:
+            for sock in self._sockets:
+                sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
+
+            self.running.clear()
+            self.shutdown()
+            self.server_close()
+            self.server.teardown()
 
     def _find_initial_peers(self) -> set:
         ''' none -> set of (str, int,)
@@ -297,10 +342,9 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
         if 'identity' not in data:
             data['identity'] = str(uuid.uuid4())
-        if 'host' not in data:
-            data['host'] = self.node_addr[0]
-        if 'port' not in data:
-            data['port'] = self.node_addr[1]
+
+        data['host'] = self.node_addr[0]
+        data['port'] = self.node_addr[1]
         data['startup'] = str(time.time())
 
         self.local.set('internal', 'local', value=data)
@@ -416,11 +460,10 @@ def main():
 
     except KeyboardInterrupt:
         print('exiting')
+        print('May take up to 5 seconds to shutdown')
 
     finally:
         node.teardown()
-        node.shutdown()
-        node.server_close()
 
 
 if __name__ == '__main__':

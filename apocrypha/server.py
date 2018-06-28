@@ -218,14 +218,21 @@ def main():
     parser.add_argument(
         '--config', type=str, default=db_path,
         help="full path to saved database")
+    parser.add_argument(
+        '--stateless', action='store_true',
+        help="do not persist to disk")
 
     args = parser.parse_args()
 
     # Create the tcp server
+    server_database = ServerDatabase(
+        args.config,
+        stateless=args.stateless)
+
     server = Server(
         (args.host, args.port),
         ServerHandler,
-        ServerDatabase(args.config))
+        server_database)
 
     try:
         print('starting')

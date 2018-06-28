@@ -153,12 +153,12 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         message so that it's not fowarded again
         '''
         while self.running.is_set():
-            print('forward_to_peers')
+            # print('forward_to_peers')
             try:
                 data = self.messages.get(timeout=Node.tick)
 
                 for peer in list(self.peers.values()):
-                    print('forwarding', data, 'to', peer.host, peer.port)
+                    # print('forwarding', data, 'to', peer.host, peer.port)
                     try:
                         self._recoverable_query(peer, ['--node'] + data)
                     except exceptions.FailedQuery:
@@ -175,7 +175,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         check peers for more peers to join, connect to all pending peers
         '''
         while self.running.is_set():
-            print('monitor_peers')
+            # print('monitor_peers')
             self._check_for_peers()
             self._connect_to_peers()
             time.sleep(Node.tick)
@@ -240,11 +240,11 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         try to create Peer objects for each pending peer, if we fail to connect
         we'll try again later
         '''
-        print('checking for peers')
+        # print('checking for peers')
         failed_connections = set()
         my_host, my_port = self.node_addr
 
-        for host, port in self.peers_to_join:
+        for host, port in list(self.peers_to_join):
 
             try:
                 peer = Peer(host, port)
@@ -424,6 +424,23 @@ class Peer(object):
         }
 
 
+class Mesh(object):
+    ''' collection of Peer
+    '''
+
+    def __init__(self):
+        self._peers = {}  # string -> Peer
+        self._to_join = set()
+
+    def peer_names(self):
+        ''' none -> [str] '''
+        return self._peers.keys()
+
+    def peers(self):
+        ''' none -> [Peer] '''
+        return self._peers.values()
+
+
 def main():
     '''
     create the node, handle teardown
@@ -437,22 +454,39 @@ def main():
     db_port = os.environ['AP_PORT'] if 'AP_PORT' in os.environ else 9999
     db_lort = os.environ['AP_LORT'] if 'AP_LORT' in os.environ else 9998
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--host', type=str, default=db_host)
-    parser.add_argument('--port', type=int, default=db_port)
-    parser.add_argument('--localport', type=int, default=db_lort)
-    parser.add_argument('--config', type=str, default=db_path)
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument(
+        '--host', type=str, default=db_host,
+        help="address to listen on")
+    parser.add_argument(
+        '--port', type=int, default=db_port,
+        help="port to listen on")
+    parser.add_argument(
+        '--localport', type=int, default=db_lort,
+        help="internal port to use")
+    parser.add_argument(
+        '--config', type=str, default=db_path,
+        help="full path to saved database")
+    parser.add_argument(
+        '--stateless', action='store_true',
+        help="do not persist to disk")
 
     args = parser.parse_args()
 
     node_address = (args.host, args.port)
     server_address = ('127.0.0.1', args.localport)
 
+    server_database = server.ServerDatabase(
+        args.config,
+        stateless=args.stateless)
+
     node = Node(
         node_address,
         server_address,
         NodeHandler,
-        server.ServerDatabase(args.config))
+        server_database)
 
     try:
         print('starting')

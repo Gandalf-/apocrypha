@@ -226,7 +226,7 @@ def get_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main():
+def main():  # pragma: no cover
     '''
     create the server, handle teardown
     '''

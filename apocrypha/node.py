@@ -423,7 +423,7 @@ class Peer(object):
         }
 
 
-def main():
+def main():  # pragma: no cover
     '''
     create the node, handle teardown
     '''

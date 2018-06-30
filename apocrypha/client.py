@@ -245,7 +245,7 @@ def _query(args, host='localhost', port=9999, interpret=False,
     return result, sock
 
 
-def _edit_temp_file(temp_file):
+def _edit_temp_file(temp_file):  # pragma: no cover
     ''' str -> str
 
     open up the result of the query in a temporary file for manual editing.
@@ -267,7 +267,7 @@ def _edit_temp_file(temp_file):
         return output
 
 
-def main(args):
+def main(args):  # pragma: no cover
     ''' list of str -> IO
     '''
 

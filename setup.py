@@ -2,6 +2,8 @@
 pypi setup.py for apocrypha
 '''
 
+# pragma: no cover
+
 from os import path
 from setuptools import setup
 

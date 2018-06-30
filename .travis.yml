@@ -3,7 +3,7 @@ language: python
 python:
   - "3.6"
 
-install: pip install flake8 pylint typing mypy
+install: pip install flake8 pylint typing mypy coverage codecov
 
 before_script:
   - export PYTHONPATH=$PYTHONPATH:$(pwd)/apocrypha
@@ -14,11 +14,12 @@ script:
   - flake8 apocrypha/*.py
 
   # tests
-  - python3 test/test_database_unit.py
-  - python3 test/test_database_action.py
-  - python3 test/test_server.py
+  - bash test/coverage.sh
 
   # typing
   - mypy apocrypha/exceptions.py
   - mypy apocrypha/network.py
   - mypy apocrypha/database.py
+
+after_success:
+  - codecov

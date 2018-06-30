@@ -194,10 +194,11 @@ def _now():
     return int(round(time.time() * MILLISECONDS))
 
 
-def main():
+def get_argument_parser() -> argparse.ArgumentParser:
     '''
-    create the server, handle teardown
+    create the arg parser used here and by node
     '''
+
     if 'AP_CNFG' in os.environ:
         db_path = os.environ['AP_CNFG']
     else:
@@ -222,6 +223,15 @@ def main():
         '--stateless', action='store_true',
         help="do not persist to disk")
 
+    return parser
+
+
+def main():
+    '''
+    create the server, handle teardown
+    '''
+
+    parser = get_argument_parser()
     args = parser.parse_args()
 
     # Create the tcp server

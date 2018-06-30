@@ -7,7 +7,6 @@
 abstraction of a server that allows communciation with other nodes
 '''
 
-import argparse
 import os
 import queue
 import socket
@@ -33,10 +32,10 @@ class NodeHandler(socketserver.BaseRequestHandler):
         ''' none -> none
         '''
         self.server.add_socket(self.request)
-        client_okay = True
+        client_alive = True
 
-        while client_okay:
-            client_okay = self._handle()
+        while client_alive:
+            client_alive = self._handle()
 
         self.server.remove_socket(self.request)
 
@@ -428,33 +427,13 @@ def main():
     '''
     create the node, handle teardown
     '''
-    if 'AP_CNFG' in os.environ:
-        db_path = os.environ['AP_CNFG']
-    else:
-        db_path = os.path.expanduser('~') + '/.db.json'
 
-    db_host = os.environ['AP_HOST'] if 'AP_HOST' in os.environ else '0.0.0.0'
-    db_port = os.environ['AP_PORT'] if 'AP_PORT' in os.environ else 9999
+    parser = server.get_argument_parser()
     db_lort = os.environ['AP_LORT'] if 'AP_LORT' in os.environ else 9998
 
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument(
-        '--host', type=str, default=db_host,
-        help="address to listen on")
-    parser.add_argument(
-        '--port', type=int, default=db_port,
-        help="port to listen on")
     parser.add_argument(
         '--localport', type=int, default=db_lort,
         help="internal port to use")
-    parser.add_argument(
-        '--config', type=str, default=db_path,
-        help="full path to saved database")
-    parser.add_argument(
-        '--stateless', action='store_true',
-        help="do not persist to disk")
 
     args = parser.parse_args()
 

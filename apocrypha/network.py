@@ -18,7 +18,7 @@ def write(sock: socket.socket, message: str) -> bool:
         raw_message = struct.pack('>I', len(message)) + message.encode('utf-8')
         sock.sendall(raw_message)
 
-    except (BrokenPipeError, UnicodeDecodeError):
+    except (UnicodeDecodeError, OSError):
         return False
 
     else:
@@ -53,7 +53,7 @@ def _recv_all(sock: socket.socket, n_bytes: int) -> Tuple[bytes, bool]:
     while len(data) < n_bytes:
         try:
             fragment = sock.recv(n_bytes - len(data))
-        except ConnectionError:
+        except OSError:
             print('lost connection to remote')
             return b'', True
 

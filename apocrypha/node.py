@@ -2,6 +2,7 @@
 
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-few-public-methods
+# pylint: disable=too-many-arguments
 
 '''
 abstraction of a server that allows communciation with other nodes
@@ -34,8 +35,12 @@ class NodeHandler(socketserver.BaseRequestHandler):
         self.server.add_socket(self.request)
         client_alive = True
 
-        while client_alive:
-            client_alive = self._handle()
+        try:
+            while client_alive:
+                client_alive = self._handle()
+        except exceptions.DatabaseError:
+            # this likely means we lost connection to our local server
+            pass
 
         self.server.remove_socket(self.request)
 
@@ -82,11 +87,11 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
     potentially remote nodes
     '''
 
-    tick = 5
+    tick = 2
     skip_query = 'SKIP_QUERY'
     allow_reuse_address = True
 
-    def __init__(self, node_addr, server_addr, handler, db):
+    def __init__(self, node_addr, server_addr, handler, db, quiet=False):
         ''' (str, int), (str, int), BaseRequestHandler, Database -> Node
 
         create a Node; start our local database server, create a client
@@ -101,7 +106,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             server_addr,
             server.ServerHandler,
             db,
-            quiet=False)
+            quiet=quiet)
 
         self.server_thread = threading.Thread(
             target=self.server.serve_forever)
@@ -274,7 +279,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
                         peer, ['--connect', my_host, str(my_port)])
                 except exceptions.FailedQuery:
                     pass
-            print('done')
+            print('finished connecting to', peer.identity)
 
         self.peers_to_join = failed_connections
 
@@ -408,9 +413,17 @@ class Peer(object):
                 '--node', 'internal', 'local', 'identity')
             print('peer connection established with', self.identity)
 
-        except (TimeoutError, ConnectionError):
+        except (exceptions.DatabaseError, TimeoutError, OSError):
             print('could not connect to', host, port)
+
+            if self.client.sock:
+                self.client.sock.close()
+
             raise exceptions.PeerCreateFailed
+
+    def __del__(self):
+        if self.client.sock:
+            self.client.sock.close()
 
     def database_representation(self):
         '''

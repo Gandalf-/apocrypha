@@ -122,6 +122,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.forwarder_thread.start()
 
         # start peer monitoring thread
+        self.mesh = Mesh()
         self.peers = {}                     # string -> Peer
         self.peers_to_join = self._find_initial_peers()
         self.peer_thread = threading.Thread(target=self.monitor_peers)
@@ -217,7 +218,8 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         check our peers' peer lists to see if they know anyone we don't,
         also works as a heartbeat to our connected peers
         '''
-        for peer in list(self.peers.values()):
+        # for peer in list(self.peers.values()):
+        for peer in self.mesh.peers():
             try:
                 their_peers = self._recoverable_get(
                     peer, '--node', 'internal', 'peers', '--edit', default={})
@@ -229,10 +231,13 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
                 del their_peers[self.info['identity']]
 
             for their_peer in their_peers:
-                if their_peer not in self.peers:
+                # if their_peer not in self.peers:
+                if their_peer not in self.mesh.names():
+
                     host = their_peers[their_peer]['host']
                     port = int(their_peers[their_peer]['port'])
-                    self.peers_to_join.add((host, port,))
+                    # self.peers_to_join.add((host, port,))
+                    self.mesh.join(host, port)
 
     def _connect_to_peers(self) -> None:
         ''' none -> none
@@ -432,13 +437,17 @@ class Mesh(object):
         self._peers = {}  # string -> Peer
         self._to_join = set()
 
-    def peer_names(self):
+    def names(self):
         ''' none -> [str] '''
         return self._peers.keys()
 
     def peers(self):
         ''' none -> [Peer] '''
         return self._peers.values()
+
+    def join(self, host: str, port: int) -> None:
+        ''' ? '''
+        self._to_join.add((host, port,))
 
 
 def main():

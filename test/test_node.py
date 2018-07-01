@@ -5,6 +5,7 @@
 # pylint: disable=missing-docstring
 # pylint: disable=too-many-public-methods
 
+import random
 import time
 import threading
 import unittest
@@ -21,6 +22,29 @@ omega_port = 6999
 alpha_client = apocrypha.client.Client(port=alpha_port)
 beta_client = apocrypha.client.Client(port=beta_port)
 omega_client = apocrypha.client.Client(port=omega_port)
+
+
+def random_query(client):
+
+    options = [client.set, client.append, client.pop, client.delete]
+    targets = ['one', 'two', 'three', 'four', 'five']
+
+    choice = random.choice(options)
+    target = random.choice(targets)
+    value = str(random.randint(0, 10000))
+
+    if choice in [client.pop, client.delete]:
+        choice(target)
+    else:
+        choice(target, value=value)
+
+
+def grab_all(client):
+    ''' retreive everything except for 'internal' key
+    '''
+    result = client.get()
+    del result['internal']
+    return result
 
 
 def verify_peers(client, ports):
@@ -47,7 +71,7 @@ def make_node(external_port):
         server_address,
         NodeHandler,
         database,
-        quiet=True)
+        quiet=False)
 
     # start the alpha node
     node_thread = threading.Thread(
@@ -192,6 +216,46 @@ class TestNode(unittest.TestCase):
         self.assertTrue(a == 'berry', a)
         self.assertTrue(b == 'berry', b)
         self.assertTrue(o == 'berry', o)
+
+    def test_6_sychronize_one_direction(self):
+        ''' send a bunch of messages to one node, make sure everyone is
+        eventually consistent '''
+
+        for _ in range(0, 100):
+            random_query(alpha_client)
+
+        # give nodes time to synchronize
+        time.sleep(5)
+
+        a = grab_all(alpha_client)
+        b = grab_all(beta_client)
+        o = grab_all(omega_client)
+
+        self.assertEqual(a, b)
+        self.assertEqual(b, o)
+        self.assertEqual(a, o)
+
+    @unittest.skip('not implemented')
+    def test_7_sychronize_two_directions(self):
+        ''' send a bunch of messages to two nodes, make sure everyone is
+        eventually consistent '''
+
+        self.maxDiff = None
+
+        for _ in range(0, 50):
+            random_query(alpha_client)
+            random_query(beta_client)
+
+        # give nodes time to synchronize
+        time.sleep(10)
+
+        a = grab_all(alpha_client)
+        b = grab_all(beta_client)
+        o = grab_all(omega_client)
+
+        self.assertEqual(a, b)
+        self.assertEqual(b, o)
+        self.assertEqual(a, o)
 
 
 if __name__ == '__main__':

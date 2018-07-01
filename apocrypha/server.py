@@ -97,8 +97,8 @@ class ServerHandler(socketserver.BaseRequestHandler):
                 result = str(error)
 
             # send reply to client
-            able_to_reply = network.write(self.request, result)
-            if not able_to_reply:
+            error = network.write(self.request, result)
+            if error:
                 return False
 
             end_time = _now()
@@ -137,10 +137,19 @@ class ServerHandler(socketserver.BaseRequestHandler):
         if self.server.quiet:
             return
 
+        name = '?'
+        if 'internal' in self.server.database.data:
+            local = self.server.database.data['internal']['local']
+            name = local.get('identity', '?')[:4]
+
         cache_size = len(self.server.database.cache)
         args = str(args)[:70]
 
-        print('{t:.5f} {c:2} {a}'.format(t=duration, c=cache_size, a=args))
+        print('{n} {t:.5f} {c:2} {a}'.format(
+            n=name,
+            t=duration,
+            c=cache_size,
+            a=args))
 
 
 class Server(socketserver.ThreadingMixIn, socketserver.TCPServer):

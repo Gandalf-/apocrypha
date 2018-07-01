@@ -19,10 +19,9 @@ def write(sock: socket.socket, message: str) -> bool:
         sock.sendall(raw_message)
 
     except (UnicodeDecodeError, OSError):
-        return False
-
-    else:
         return True
+
+    return False
 
 
 def read(sock: socket.socket) -> Tuple[str, bool]:

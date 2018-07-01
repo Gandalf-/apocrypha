@@ -35,12 +35,8 @@ class NodeHandler(socketserver.BaseRequestHandler):
         self.server.add_socket(self.request)
         client_alive = True
 
-        try:
-            while client_alive:
-                client_alive = self._handle()
-        except exceptions.DatabaseError:
-            # this likely means we lost connection to our local server
-            pass
+        while client_alive:
+            client_alive = self._handle()
 
         self.server.remove_socket(self.request)
 
@@ -60,8 +56,8 @@ class NodeHandler(socketserver.BaseRequestHandler):
             # check for node to node messages
             parsed, forward = self.server.handle_node_message(parsed)
             if parsed == Node.skip_query:
-                able_to_reply = network.write(self.request, '\n')
-                if not able_to_reply:
+                error = network.write(self.request, '\n')
+                if error:
                     return False
 
                 return True
@@ -70,8 +66,8 @@ class NodeHandler(socketserver.BaseRequestHandler):
             result = self.server.local.query(parsed)
             result = '\n'.join(result) + '\n'
 
-            able_to_reply = network.write(self.request, result)
-            if not able_to_reply:
+            error = network.write(self.request, result)
+            if error:
                 return False
 
         # forward query on to peers
@@ -157,12 +153,10 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         message so that it's not fowarded again
         '''
         while self.running.is_set():
-            # print('forward_to_peers')
             try:
                 data = self.messages.get(timeout=Node.tick)
 
                 for peer in list(self.peers.values()):
-                    # print('forwarding', data, 'to', peer.host, peer.port)
                     try:
                         self._recoverable_query(peer, ['--node'] + data)
                     except exceptions.FailedQuery:
@@ -179,7 +173,6 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         check peers for more peers to join, connect to all pending peers
         '''
         while self.running.is_set():
-            # print('monitor_peers')
             self._check_for_peers()
             self._connect_to_peers()
             time.sleep(Node.tick)
@@ -198,6 +191,12 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             self.shutdown()
             self.server_close()
             self.server.teardown()
+
+    def _log(self, msg: str) -> None:
+        ''' print a message
+        '''
+        name = self.info['identity'][:4]
+        print('{n} {m}'.format(n=name, m=msg))
 
     def _find_initial_peers(self) -> set:
         ''' none -> set of (str, int,)
@@ -244,14 +243,14 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         try to create Peer objects for each pending peer, if we fail to connect
         we'll try again later
         '''
-        # print('checking for peers')
         failed_connections = set()
         my_host, my_port = self.node_addr
+        my_name = self.info['identity'][:4]
 
         for host, port in list(self.peers_to_join):
 
             try:
-                peer = Peer(host, port)
+                peer = Peer(my_name, host, port)
             except exceptions.PeerCreateFailed:
                 failed_connections.add((host, port,))
                 continue
@@ -266,7 +265,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             self._merge(peer)
 
             # see if they're connected to us
-            print('checking their peers...')
+            self._log('checking their peers...')
             their_peers = peer.client.get(
                 '--node', 'internal', 'peers', default={})
             my_identity = self.info['identity']
@@ -274,12 +273,15 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             # if they're not, tell them to connect to us
             if my_identity not in their_peers:
                 try:
-                    print('sending connect message', peer.host, peer.port)
+                    self._log(
+                        'sending connect message {h}:{p}'
+                        .format(h=peer.host, p=peer.port))
+
                     self._recoverable_query(
                         peer, ['--connect', my_host, str(my_port)])
                 except exceptions.FailedQuery:
                     pass
-            print('finished connecting to', peer.identity)
+            self._log('finished connecting to ' + peer.identity)
 
         self.peers_to_join = failed_connections
 
@@ -294,7 +296,9 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
                 self._recoverable_get(peer, 'internal', 'local', 'startup'))
 
             if their_startup < our_startup:
-                print('merging with', peer.host, peer.port)
+                self._log(
+                    'merging with {h}:{p}'
+                    .format(h=peer.host, p=peer.port))
 
                 their_db = self._recoverable_get(peer)
                 our_db = self.local.get()
@@ -318,7 +322,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             return peer.client.query(keys)
 
         except (ConnectionError, exceptions.DatabaseError) as error:
-            print(peer.identity, error)
+            self._log('{e}: {i}'.format(i=peer.identity, e=error))
             self._recover_peer(peer)
             raise exceptions.FailedQuery from None
 
@@ -332,7 +336,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
             return peer.client.get(*keys, default=default, cast=cast)
 
         except (ConnectionError, exceptions.DatabaseError) as error:
-            print(peer.identity, error)
+            self._log('{e}: {i}'.format(i=peer.identity, e=error))
             self._recover_peer(peer)
             raise exceptions.FailedQuery from None
 
@@ -361,7 +365,8 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         we hit an error talking to a peer we've successfull connected to
         before, add them back to peers_to_join
         '''
-        print('attempting to recover', peer.host, peer.port)
+        self._log('attempting to recover {h}:{p}'.format(
+            h=peer.host, p=peer.port))
 
         if peer.identity in self.peers:
             del self.peers[peer.identity]
@@ -396,7 +401,7 @@ class Peer(object):
     data encapsulation of a remote peer Node
     '''
 
-    def __init__(self, host, port):
+    def __init__(self, name, host, port):
         ''' string, int -> Peer | None
 
         given a host and port, attempt to connect to another apocrypha node.
@@ -404,26 +409,26 @@ class Peer(object):
 
         if a connection cannot be made, return None
         '''
-        print('attempting to connect to', host, port)
+        self._name = name
+        self._log('attempting to connect to {h}:{p}'.format(h=host, p=port))
+
         try:
             self.host = host    # str
             self.port = port    # int
             self.client = client.Client(host=host, port=port)
             self.identity = self.client.get(
                 '--node', 'internal', 'local', 'identity')
-            print('peer connection established with', self.identity)
+            self._log('peer connection established with {i}'.format(
+                i=self.identity))
 
         except (exceptions.DatabaseError, TimeoutError, OSError):
-            print('could not connect to', host, port)
-
-            if self.client.sock:
-                self.client.sock.close()
-
+            self._log('could not connect to {h}:{p}'.format(h=host, p=port))
             raise exceptions.PeerCreateFailed
 
-    def __del__(self):
-        if self.client.sock:
-            self.client.sock.close()
+    def _log(self, msg: str) -> None:
+        ''' print a message
+        '''
+        print('{n} {m}'.format(n=self._name[:4], m=msg))
 
     def database_representation(self):
         '''

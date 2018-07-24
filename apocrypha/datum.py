@@ -9,7 +9,7 @@ Experimental client that hides database calls
 
 import collections
 
-from apocrypha.client import Client
+from apocrypha.client import Client, HOST, PORT
 
 
 class Datum(collections.MutableMapping):
@@ -17,22 +17,27 @@ class Datum(collections.MutableMapping):
     python variable that behaves mostly like a dict()
     '''
 
-    def __init__(self, *base: [str]) -> None:
+    def __init__(self, *base: [str], host=HOST, port=PORT) -> None:
         ''' setup, create client
         base is our root in the database
         '''
+        self._port = port
+        self._host = host
         self._base = list(base) if base else ['']
-        self._client = Client()
+        self._client = Client(host=host, port=port)
 
     def __repr__(self) -> None:
         ''' get our value for printing
         '''
+        return self._client.get(*self._base) or {}
+
+    def __str__(self) -> None:
         return str(self._client.get(*self._base) or {})
 
     def __getitem__(self, key: str) -> any:
         ''' retrieve a value, returns another Inline for deep indexing
         '''
-        return Datum(*self._base + [key])
+        return Datum(*self._base + [key], host=self._host, port=self._port)
 
     def __setitem__(self, key: str, value: any) -> None:
         ''' assign a value
@@ -47,7 +52,8 @@ class Datum(collections.MutableMapping):
     def __iter__(self) -> iter:
         ''' iterable for loops
         '''
-        return iter(self._client.get(*self._base))
+        result = self._client.get(*self._base)
+        return iter(result or [])
 
     def __len__(self) -> int:
         return len(self._client.get(*self._base))

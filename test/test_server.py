@@ -12,7 +12,9 @@ import apocrypha.client
 from apocrypha.exceptions import DatabaseError
 from apocrypha.server import ServerDatabase, ServerHandler, Server
 
-client = apocrypha.client.Client(port=49999)
+PORT = 49999
+
+client = apocrypha.client.Client(port=PORT)
 
 
 def query(args, raw=False):
@@ -21,7 +23,7 @@ def query(args, raw=False):
     return client.query(args, interpret=raw)
 
 
-class TestServer(unittest.TestCase):
+class TestServerBase(unittest.TestCase):
 
     database = None
     server = None
@@ -34,31 +36,33 @@ class TestServer(unittest.TestCase):
         run the server in a thread so test cases may run
         '''
         # create the ServerDatabase instance, which inherits from Apocrypha
-        TestServer.database = ServerDatabase(
+        TestServerBase.database = ServerDatabase(
             'test/test-db.json',
             stateless=True)
 
         # Create the tcp server
-        host, port = '0.0.0.0', 49999
-        TestServer.server = Server(
+        host, port = '0.0.0.0', PORT
+        TestServerBase.server = Server(
             (host, port), ServerHandler,
-            TestServer.database, quiet=True)
+            TestServerBase.database, quiet=True)
 
         # start the server
-        TestServer.server_thread = threading.Thread(
-            target=TestServer.server.serve_forever)
+        TestServerBase.server_thread = threading.Thread(
+            target=TestServerBase.server.serve_forever)
 
-        TestServer.server_thread.start()
-        TestServer.db = apocrypha.client.Client(port=49999)
+        TestServerBase.server_thread.start()
+        TestServerBase.db = apocrypha.client.Client(port=PORT)
 
     @classmethod
     def tearDownClass(cls):
         '''
         shutdown the server
         '''
-        TestServer.server.teardown()
-        TestServer.server.socket.close()
-        TestServer.server_thread.join(1)
+        TestServerBase.server.teardown()
+        TestServerBase.server.socket.close()
+        TestServerBase.server_thread.join(1)
+
+class TestServer(TestServerBase):
 
     # server tests
     #   caching

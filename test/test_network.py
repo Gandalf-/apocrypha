@@ -5,7 +5,6 @@
 # pylint: disable=missing-docstring
 # pylint: disable=too-many-public-methods
 
-import struct
 import socket
 import unittest
 import time
@@ -19,7 +18,7 @@ running = threading.Event()
 running.set()
 
 
-class echo_server(object):
+class echo_server():
 
     def __init__(self):
         self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

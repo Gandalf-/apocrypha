@@ -17,19 +17,29 @@ import time
 from apocrypha.exceptions import DatabaseError
 from apocrypha.network import read, write
 
+HOST = 'localhost'
+PORT = 9999
 
-class Client(object):
+
+class Client():
     '''
     client API object for communicating with an Apocrypha Server
 
     >>> db = apocrypha.client.Client()
     '''
 
-    def __init__(self, host='localhost', port=9999):
+    def __init__(self, host=HOST, port=PORT):
         self.host = host
         self.port = port
         self.sock = None
         self.lock = threading.Lock()
+
+    def __del__(self):
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+            self.sock.close()
+        except AttributeError:
+            pass
 
     def query(self, keys, interpret=False):
         ''' list of str, maybe bool -> str | none
@@ -66,7 +76,7 @@ class Client(object):
         if not result:
             return default
 
-        elif cast:
+        if cast:
             try:
                 if not isinstance(result, (list, dict,)):
                     result = [result]
@@ -76,8 +86,7 @@ class Client(object):
                 raise DatabaseError(
                     'error: unable to case to ' + str(cast)) from None
 
-        else:
-            return result
+        return result
 
     def keys(self, *keys):
         ''' str ..., maybe any -> list of str | none | DatabaseError

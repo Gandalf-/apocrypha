@@ -33,7 +33,7 @@ READ_OPS = {
 WRITE_OPS = OPERATORS - READ_OPS
 
 
-class Database(object):
+class Database():
     '''
     A flexible, json based database that supports
     - strings, lists, dictionaries
@@ -215,36 +215,36 @@ class Database(object):
                     self._assign(last_base, left, right)
                     return
 
-                elif key == '+':
+                if key == '+':
                     self._append(last_base, left, right)
                     return
 
-                elif key == '-':
+                if key == '-':
                     self._remove(last_base, left, right)
                     return
 
-                elif key == '@':
+                if key == '@':
                     self._search(self.data, keys[i + 1], keys[:i])
                     return
 
-                elif key in {'-k', '--keys'}:
+                if key in {'-k', '--keys'}:
                     self._keys(base, left)
                     return
 
-                elif key in {'-e', '--edit'}:
+                if key in {'-e', '--edit'}:
                     self.output = [json.dumps(base, indent=4, sort_keys=True)]
                     return
 
-                elif key in {'-s', '--set'}:
+                if key in {'-s', '--set'}:
                     self._set(last_base, left, right[0])
                     return
 
-                elif key in {'-d', '--del'}:
+                if key in {'-d', '--del'}:
                     del last_base[left]
                     self.write_needed = True
                     return
 
-                elif key in {'-p', '--pop'}:
+                if key in {'-p', '--pop'}:
                     self._pop(last_base, left)
                     return
 
@@ -539,7 +539,7 @@ class Database(object):
         if not base[left]:
             return
 
-        elif isinstance(base[left], list):
+        if isinstance(base[left], list):
             self._display(base[left].pop())
             self.write_needed = True
 

@@ -3,6 +3,7 @@
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-few-public-methods
 # pylint: disable=too-many-arguments
+# pylint: disable=useless-import-alias
 
 '''
 abstraction of a server that allows communciation with other nodes
@@ -396,7 +397,7 @@ class Node(socketserver.ThreadingMixIn, socketserver.TCPServer):
         return data, True
 
 
-class Peer(object):
+class Peer():
     '''
     data encapsulation of a remote peer Node
     '''

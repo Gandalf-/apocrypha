@@ -53,7 +53,6 @@ def _recv_all(sock: socket.socket, n_bytes: int) -> Tuple[bytes, bool]:
         try:
             fragment = sock.recv(n_bytes - len(data))
         except OSError:
-            print('lost connection to remote')
             return b'', True
 
         if not fragment:

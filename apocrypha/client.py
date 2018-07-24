@@ -35,10 +35,11 @@ class Client():
         self.lock = threading.Lock()
 
     def __del__(self):
+        # pylint: disable=broad-except
         try:
             self.sock.shutdown(socket.SHUT_RDWR)
             self.sock.close()
-        except AttributeError:
+        except Exception:
             pass
 
     def query(self, keys, interpret=False):

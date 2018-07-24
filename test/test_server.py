@@ -323,6 +323,12 @@ class TestServer(TestServerBase):
         with self.assertRaises(DatabaseError):
             TestServer.db.remove('octopus', value='sandwich')
 
+    def test_remove_type_error(self):
+        TestServer.db.set('octopus', value={1: 2, 3: 4})
+
+        with self.assertRaises(DatabaseError):
+            TestServer.db.remove('octopus', value='sandwich')
+
     # append
     def test_append(self):
         TestServer.db.delete('test list')
@@ -393,6 +399,35 @@ class TestServer(TestServerBase):
         self.assertEqual(
             TestServer.db.get('test item'),
             None)
+
+    # pop
+    def test_pop_cast(self):
+        TestServer.db.set('item', value='hello')
+
+        result = TestServer.db.pop('item', cast=list)
+        self.assertEqual(
+            result, list('hello'))
+
+    def test_pop_bad_cast(self):
+        TestServer.db.set('item', value='hello')
+
+        with self.assertRaises(DatabaseError):
+            TestServer.db.pop('item', cast=dict)
+
+    # apply
+    def test_apply(self):
+        TestServer.db.set('list', value=['a', 'a', 'b', 'c'])
+        TestServer.db.apply('list', func=lambda xs: list(set(xs)))
+        self.assertEqual(
+            sorted(TestServer.db.get('list')),
+            sorted(['a', 'b', 'c']))
+
+    # raw query
+    def test_query(self):
+        self.assertEqual(
+            apocrypha.client.query(
+                ['non', 'existant', '--keys'], port=PORT),
+            [])
 
 
 if __name__ == '__main__':

@@ -12,6 +12,7 @@ import unittest
 import warnings
 
 import apocrypha.client
+import apocrypha.exceptions
 from apocrypha.server import ServerDatabase
 from apocrypha.node import NodeHandler, Node
 
@@ -24,19 +25,49 @@ beta_client = apocrypha.client.Client(port=beta_port)
 omega_client = apocrypha.client.Client(port=omega_port)
 
 
-def random_query(client):
+def random_query(client, debug=False):
 
-    options = [client.set, client.append, client.pop, client.delete]
-    targets = ['one', 'two', 'three', 'four', 'five']
+    queries_without_args = [
+        client.pop,
+        client.delete,
+        client.keys,
+        client.get
+    ]
+    queries_with_args = [
+        client.set,
+        client.append,
+        client.remove
+    ]
 
+    options = queries_with_args + queries_without_args
     choice = random.choice(options)
-    target = random.choice(targets)
-    value = str(random.randint(0, 10000))
 
-    if choice in [client.pop, client.delete]:
-        choice(target)
-    else:
-        choice(target, value=value)
+    targets = ['one', 'two', 'three', 'four', 'five']
+    target = [random.choice(targets)]
+    target = random.choice([
+        target,
+        target + [random.choice(targets)]
+    ])
+
+    value = str(random.randint(0, 10000))
+    value = random.choice([
+        value,
+        [value, value, value],
+        {value: value, value: value}
+    ])
+
+    try:
+        if choice in queries_without_args:
+            if debug:
+                print(choice.__name__, target)
+            choice(*target)
+        else:
+            if debug:
+                print(choice.__name__, target, value)
+            choice(*target, value=value)
+    except apocrypha.exceptions.DatabaseError:
+        # we did something invalid, but it was reported correctly
+        pass
 
 
 def grab_all(client):
@@ -221,7 +252,7 @@ class TestNode(unittest.TestCase):
         ''' send a bunch of messages to one node, make sure everyone is
         eventually consistent '''
 
-        for _ in range(0, 100):
+        for _ in range(0, 400):
             random_query(alpha_client)
 
         # give nodes time to synchronize
@@ -235,8 +266,44 @@ class TestNode(unittest.TestCase):
         self.assertEqual(b, o)
         self.assertEqual(a, o)
 
+    def test_7_sychronize_one_direction_threads(self):
+        ''' send a bunch of messages to one node using multiple threads,
+        make sure everyone is eventually consistent
+        '''
+
+        num_requests = 100
+        num_workers = 5
+
+        def worker():
+            time.sleep(0.1)
+            for _ in range(0, num_requests):
+                random_query(alpha_client)
+
+        threads = []
+        for _ in range(0, num_workers):
+            threads += [
+                threading.Thread(target=worker)
+            ]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        # give nodes time to synchronize
+        time.sleep(5)
+
+        a = grab_all(alpha_client)
+        b = grab_all(beta_client)
+        o = grab_all(omega_client)
+
+        self.assertEqual(a, b)
+        self.assertEqual(b, o)
+        self.assertEqual(a, o)
+
     @unittest.skip('not implemented')
-    def test_7_sychronize_two_directions(self):
+    def test_8_sychronize_two_directions(self):
         ''' send a bunch of messages to two nodes, make sure everyone is
         eventually consistent '''
 

@@ -64,16 +64,20 @@ class NodeHandler(socketserver.BaseRequestHandler):
                 return True
 
             # get result from local server
-            result = self.server.local.query(parsed)
-            result = '\n'.join(result) + '\n'
+            try:
+                result = self.server.local.query(parsed)
+                result = '\n'.join(result) + '\n'
+            except exceptions.DatabaseError as error:
+                result = '\n' + str(error) + '\n'
+                forward = False
 
             error = network.write(self.request, result)
             if error:
                 return False
 
-        # forward query on to peers
-        if forward:
-            self.server.messages.put(parsed)
+            # forward query on to peers
+            if forward:
+                self.server.messages.put(parsed)
 
         return True
 

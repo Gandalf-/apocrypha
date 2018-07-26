@@ -5,12 +5,14 @@
 # pylint: disable=missing-docstring
 # pylint: disable=too-many-public-methods
 
+import time
 import threading
 import unittest
 
 import apocrypha.client
 from apocrypha.exceptions import DatabaseError
 from apocrypha.server import ServerDatabase, ServerHandler, Server
+from test_node import random_query
 
 PORT = 49999
 
@@ -428,6 +430,38 @@ class TestServer(TestServerBase):
             apocrypha.client.query(
                 ['non', 'existant', '--keys'], port=PORT),
             [])
+
+    def test_fuzz(self):
+        ''' throw a ton of junk at the server and see if it crashes
+        '''
+        for _ in range(0, 1000):
+            random_query(client, debug=False)
+
+    def test_lock_stress(self):
+        ''' make a ton of junk queries from several threads
+
+        not interested in what the queries do, just that they don't crash the
+        server
+        '''
+        num_requests = 500
+        num_workers = 10
+
+        def worker():
+            time.sleep(0.1)
+            for _ in range(0, num_requests):
+                random_query(client, debug=False)
+
+        threads = []
+        for _ in range(0, num_workers):
+            threads += [
+                threading.Thread(target=worker)
+            ]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
 
 
 if __name__ == '__main__':

@@ -205,7 +205,7 @@ def _now():
     return int(round(time.time() * MILLISECONDS))
 
 
-def get_argument_parser() -> argparse.ArgumentParser:
+def get_argument_parser() -> argparse.ArgumentParser:  # pragma: no cover
     '''
     create the arg parser used here and by node
     '''

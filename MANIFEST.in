@@ -1,5 +1,5 @@
 # Include the license file
-include LICENSE.txt
+include LICENSE
 
 # Include the test files
 recursive-include test *

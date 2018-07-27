@@ -503,7 +503,17 @@ class TestDatabaseSearch(unittest.TestCase):
         self.assertEqual(
             a.output, ['list = needle'])
 
-    def test_search_dict(self):
+    def test_search_dict_key(self):
+        a = run([
+            ['blue', 'berry', '=', 'octopus'],
+            ['blue', 'cobbler', '=', 'squid'],
+            ['@', 'cobbler'],
+        ])
+
+        self.assertEqual(
+            a.output, ['blue = cobbler'])
+
+    def test_search_dict_value(self):
         a = run([
             ['blue', 'berry', '=', 'octopus'],
             ['blue', 'cobbler', '=', 'squid'],

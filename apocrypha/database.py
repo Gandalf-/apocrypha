@@ -120,7 +120,7 @@ class Database():
         if cache:
             self.cache[key] = self.output
 
-    def _writer(self) -> None:
+    def _writer(self) -> None:  # pragma: no cover
         '''
         callback for writer_thread
         '''

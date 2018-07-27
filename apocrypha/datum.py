@@ -26,11 +26,6 @@ class Datum(collections.MutableMapping):
         self._base = list(base) if base else ['']
         self._client = Client(host=host, port=port)
 
-    def __repr__(self) -> None:
-        ''' get our value for printing
-        '''
-        return self._client.get(*self._base) or {}
-
     def __str__(self) -> None:
         return str(self._client.get(*self._base) or {})
 
@@ -57,9 +52,6 @@ class Datum(collections.MutableMapping):
 
     def __len__(self) -> int:
         return len(self._client.get(*self._base))
-
-    def __keytransform__(self, key: str) -> str:
-        return key
 
     def __add__(self, value: str) -> str:
         ''' show what ourself + value would look like, used by +=

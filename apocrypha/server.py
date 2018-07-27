@@ -266,5 +266,5 @@ def main():  # pragma: no cover
         server.teardown()
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     main()

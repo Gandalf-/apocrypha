@@ -331,6 +331,10 @@ class TestServer(TestServerBase):
         with self.assertRaises(DatabaseError):
             TestServer.db.remove('octopus', value='sandwich')
 
+    def test_remove_error_top_level(self):
+        with self.assertRaises(DatabaseError):
+            TestServer.db.remove(value='key that does not exist')
+
     # append
     def test_append(self):
         TestServer.db.delete('test list')

@@ -241,6 +241,8 @@ def _query(args, host='localhost', port=9999, interpret=False,
     result, error = read(sock)
 
     if error:
+        sock.close()
+        sock = None
         raise DatabaseError('error: network length')
     if close:
         sock.close()

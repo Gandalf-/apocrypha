@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # pylint: disable=protected-access
+# pylint: disable=global-statement
 # pylint: disable=no-self-use
 # pylint: disable=missing-docstring
 # pylint: disable=too-many-public-methods
@@ -149,17 +150,24 @@ class TestNode(unittest.TestCase):
         warnings.simplefilter("ignore", ResourceWarning)
 
         print('\ntearing down, may take up to 5 seconds')
-        alpha_client.sock.close()
-        beta_client.sock.close()
-        omega_client.sock.close()
+        for client in [alpha_client, beta_client, omega_client]:
+            client.sock.close()
 
-        TestNode.alpha_node.teardown()
-        TestNode.beta_node.teardown()
-        TestNode.omega_node.teardown()
+        nodes = [
+            TestNode.alpha_node,
+            TestNode.beta_node,
+            TestNode.omega_node
+        ]
+        for node in nodes:
+            node.teardown()
 
-        TestNode.alpha_node_thread.join(1)
-        TestNode.beta_node_thread.join(1)
-        TestNode.omega_node_thread.join(1)
+        threads = [
+            TestNode.alpha_node_thread,
+            TestNode.beta_node_thread,
+            TestNode.omega_node_thread
+        ]
+        for thread in threads:
+            thread.join(1)
 
     def test_1_alpha_sanity(self):
         alpha_client.set('apple', value='sauce')
@@ -177,7 +185,7 @@ class TestNode(unittest.TestCase):
         self.assertEqual(result, 'sauce')
 
     @ignore_warnings
-    def test_4_connect(self):
+    def test_4_connect_beta(self):
         ''' alpha --connect -> beta
 
         have alpha send a connect message to beta. beta will respond and merge
@@ -232,6 +240,56 @@ class TestNode(unittest.TestCase):
 
         self.assertTrue(
             verify_peers(beta_client, [alpha_port, omega_port]))
+
+    def test_rejoin(self):
+        ''' omega drops out, everyone automatically reconnects when it comes
+        back up
+        '''
+        global omega_client
+        warnings.simplefilter("ignore", ResourceWarning)
+
+        # shutdown omega
+        TestNode.omega_node.teardown()
+        TestNode.omega_node_thread.join(1)
+
+        # wait for alpha and beta to figure it out
+        time.sleep(5)
+
+        # make sure omega is dead
+        with self.assertRaises(apocrypha.exceptions.DatabaseError):
+            omega_client.keys()
+
+        # send a message to alpha, beta should get it
+        alpha_client.set('green', value='berry')
+
+        a = alpha_client.get('green')
+        self.assertTrue(a == 'berry', a)
+
+        time.sleep(2)
+        b = beta_client.get('green')
+        self.assertTrue(b == 'berry', b)
+
+        # bring omega back
+        TestNode.omega_node, TestNode.omega_node_thread = \
+            make_node(omega_port)
+
+        # wait for everyone to rejoin
+        time.sleep(4)
+
+        # send a message to omega
+        omega_client = apocrypha.client.Client(port=omega_port)
+
+        omega_client.set('yellow', value='berry')
+        a = omega_client.get('yellow')
+
+        # check it on the others
+        time.sleep(2)
+        b = beta_client.get('yellow')
+        o = alpha_client.get('yellow')
+
+        self.assertTrue(a == 'berry', a)
+        self.assertTrue(b == 'berry', b)
+        self.assertTrue(o == 'berry', o)
 
     def test_5_write_query(self):
         ''' send a write query to alpha, make sure everyone in the mesh

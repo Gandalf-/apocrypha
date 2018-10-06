@@ -21,6 +21,7 @@ from typing import Dict     # noqa: F401 pylint: disable=unused-import
 from typing import Tuple    # noqa: F401 pylint: disable=unused-import
 
 from apocrypha.exceptions import DatabaseError
+from apocrypha.locks import ReadWriteLock
 
 
 OPERATORS = {
@@ -55,7 +56,7 @@ class Database():
         self.headless = headless
         self.path = path
         self.strict = False
-        self.lock = threading.Lock()
+        self.lock = ReadWriteLock()
 
         self.output = []    # type: List[str]
         self.cache = {}     # type: Dict[Tuple, List[str]]
@@ -106,7 +107,7 @@ class Database():
         '''
         self._action(self.data, args)
 
-    def _maybe_cache(self, args: List[str]) -> None:
+    def _maybe_cache(self, args: List[str]) -> bool:
         '''
         check if we can cache the input and output of this query
         '''
@@ -119,6 +120,9 @@ class Database():
 
         if cache:
             self.cache[key] = self.output
+            return True
+
+        return False
 
     def _writer(self) -> None:  # pragma: no cover
         '''
@@ -364,24 +368,22 @@ class Database():
 
         # string
         if isinstance(value, str):
-            if value[0] == '!':
-                value = value[1:]
-                self._dereference(value, [])
+            if base:
+                result += [base + value]
             else:
-                result += [base + str(value)]
+                result += [value]
 
         # list
         elif isinstance(value, list):
-            for elem in value:
-                if elem and isinstance(elem, str) and elem[0] == '!':
-                    elem = elem[1:]
-                    self._dereference(elem, [])
-                else:
-                    result += [base + str(elem)]
+            if base:
+                result += [base + str(elem) for elem in value]
+            else:
+                result += [str(elem) for elem in value]
 
         # dict
         else:
             result += [base + pprint.pformat(value)]
+            # result += [base + str(value)]
 
         self.output += result
 

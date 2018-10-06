@@ -85,10 +85,18 @@ class ServerHandler(socketserver.BaseRequestHandler):
         if error:
             return False
 
-        with self.server.database.lock:
-            start_time = _now()
-            args = self._parse_arguments(data)
-            result = ''
+        start_time = _now()
+        args, add_context, strict, writer = self._parse_arguments(data)
+        result = ''
+
+        try:
+            if writer:
+                self.server.database.lock.acquire_write()
+            else:
+                self.server.database.lock.acquire_read()
+
+            self.server.database.add_context = add_context
+            self.server.database.strict = strict
 
             try:
                 self.server.database.action(args)
@@ -109,29 +117,40 @@ class ServerHandler(socketserver.BaseRequestHandler):
             # reset internal values, save changes if needed
             self.server.database.post_action()
 
-        self._log(args, query_duration)
+            self._log(args, query_duration)
+
+        finally:
+            if writer:
+                self.server.database.lock.release_write()
+            else:
+                self.server.database.lock.release_read()
+
         return True
 
     def _parse_arguments(self, data):
-        ''' none -> none
+        ''' str -> [str], bool, bool, bool
 
         arguments are delimited by newlines, remove empty elements
         '''
-
         args = data.split('\n') if data else []
         args = [arg for arg in args if arg]
+        add_context = False
+        strict = False
 
         while args and args[0] in {'-c', '--context', '-s', '--strict'}:
 
             if args[0] in {'-c', '--context'}:
                 self.server.database.add_context = True
+                add_context = True
 
             if args[0] in {'-s', '--strict'}:
                 self.server.database.strict = True
+                strict = True
 
             args = args[1:]
 
-        return args
+        writer = database.WRITE_OPS.intersection(set(args))
+        return args, add_context, strict, writer
 
     def _log(self, args, duration):
         ''' list of string -> none
@@ -147,10 +166,11 @@ class ServerHandler(socketserver.BaseRequestHandler):
         cache_size = len(self.server.database.cache)
         args = str(args)[:70]
 
-        print('{n} {t:.5f} {c:2} {a}'.format(
+        print('{n} {t:.5f} {c:2} {h:2} {a}'.format(
             n=name,
             t=duration,
             c=cache_size,
+            h=self.server.database.lock.readers,
             a=args))
 
 

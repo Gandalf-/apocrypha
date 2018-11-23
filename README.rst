@@ -24,6 +24,10 @@ You can install Apocrypha with pip: ``pip3 install apocrypha``
 
 Then you're ready to start the server: ``python3 -m apocrypha.server``
 
+If you're comfortable with Haskell, there is a `Haskell Implementation`_.
+
+.. _Haskell Implementation: https://github.com/Gandalf-/Haskell/tree/master/apocrypha
+
 Features
 ========
 
@@ -52,14 +56,14 @@ Example Python API usage, check ``pydoc3 apocrypha.client`` for full usage and
 more examples.
 
 .. code-block:: python
-  
+
   from apocrypha.client import Client
   db = Client()
-  
+
   # apocrypha supports lists, strings, and dictionaries
   for i in range(0, 100):
     db.append('numbers', value=i)
-  
+
   print(db.get('numbers')[:10])
 
   # nested dictionaries are allowed!
@@ -207,7 +211,7 @@ replace the value of an index with raw JSON
 edit
 ====
 
-dump the raw JSON value of a key. 
+dump the raw JSON value of a key.
 
 ::
 

@@ -26,7 +26,7 @@ Then you're ready to start the server: ``python3 -m apocrypha.server``
 
 If you're comfortable with Haskell, there is a `Haskell Implementation`_.
 
-.. _Haskell Implementation: https://github.com/Gandalf-/Haskell/tree/master/apocrypha
+.. _Haskell Implementation: https://github.com/Gandalf-/apocrypha-haskell
 
 Features
 ========

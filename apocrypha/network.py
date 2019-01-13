@@ -7,7 +7,11 @@ message before the message
 
 import socket
 import struct
-from typing import Tuple
+
+try:
+    from typing import Tuple
+except ImportError:
+    pass
 
 
 def write(sock: socket.socket, message: str) -> bool:

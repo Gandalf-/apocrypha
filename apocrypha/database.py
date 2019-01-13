@@ -16,9 +16,12 @@ import threading
 import time
 import zlib
 
-from typing import List, Any, Union
-from typing import Dict     # noqa: F401 pylint: disable=unused-import
-from typing import Tuple    # noqa: F401 pylint: disable=unused-import
+try:
+    from typing import List, Any, Union
+    from typing import Dict     # noqa: F401 pylint: disable=unused-import
+    from typing import Tuple    # noqa: F401 pylint: disable=unused-import
+except ImportError:
+    pass
 
 from apocrypha.exceptions import DatabaseError
 

@@ -7,6 +7,7 @@ Client connection wrapper and network functions
 '''
 
 import json
+import math
 import select
 import socket
 import subprocess
@@ -20,8 +21,52 @@ from apocrypha.network import read, write
 HOST = 'localhost'
 PORT = 9999
 
+def Cache(context=None, host=HOST, port=PORT, ttl=0):
+    '''
+    memoization for functions with JSON serializable results
+    >>> @Cache()
+    >>> def fibonacci(n):
+    >>>     ...
+    >>> @Cache(host='elm.anardil.net')
+    >>> def computation(path, target):
+    >>>     ...
+    '''
+    def wrap(f):
+        return __cache(f, context, host, port, ttl)
+    return wrap
 
-class Client():
+class __cache:
+    '''
+    memoization for functions with JSON serializable results
+    '''
+    def __init__(self, func, context, host, port, ttl):
+        self.func = func
+        self.context = context
+        self.client = Client(host, port)
+        self.ttl = ttl
+
+    def __call__(self, *args):
+        default_context = 'apocrypha-python-memoizer'
+        args = args or ('__no_args',)
+        key = (self.context or default_context, self.func.__name__,) + args
+        key = [str(k) for k in key]
+
+        now = math.floor(time.time())
+        hit = self.client.get(*key)
+        if hit:
+            if not self.ttl or hit['a'] + self.ttl > now:
+                return hit['v']
+
+        result = {
+            'a': now,
+            'v': self.func(*args)
+        }
+        self.client.set(*key, value=result)
+
+        return result['v']
+
+
+class Client:
     '''
     client API object for communicating with an Apocrypha Server
 
@@ -52,8 +97,13 @@ class Client():
 
         with self.lock:
             result, self.sock = _query(
-                keys, self.host, port=self.port, interpret=interpret,
-                close=False, sock=self.sock)
+                keys,
+                self.host,
+                port=self.port,
+                interpret=interpret,
+                close=False,
+                sock=self.sock,
+            )
 
         return result
 
@@ -83,9 +133,12 @@ class Client():
                     result = [result]
                 return cast(result)
 
-            except ValueError:
+            except (TypeError, ValueError):
                 raise DatabaseError(
-                    'error: unable to case to ' + str(cast)) from None
+                    'error: cast {c} is not applicable to {t}'.format(
+                        c=cast.__name__, t=type(result)
+                    )
+                ) from None
 
         return result
 
@@ -122,8 +175,10 @@ class Client():
 
         except ValueError:
             raise DatabaseError(
-                'error: cast {c} is not applicable to {t}'
-                .format(c=cast.__name__, t=result)) from None
+                'error: cast {c} is not applicable to {t}'.format(
+                    c=cast.__name__, t=result
+                )
+            ) from None
 
         return result
 
@@ -147,9 +202,10 @@ class Client():
 
         try:
             self.query(keys + ['+'] + value)
-
         except (TypeError, ValueError):
-            raise DatabaseError('error: {v} is not a str or list') from None
+            raise DatabaseError(
+                f'error: {value} is not a str or list'
+            ) from None
 
     def remove(self, *keys, value):
         ''' str ..., str | list of str -> none | DatabaseError
@@ -189,7 +245,8 @@ class Client():
 
         except (TypeError, ValueError):
             raise DatabaseError(
-                'error: value is not JSON serializable') from None
+                'error: value is not JSON serializable'
+            ) from None
 
     def apply(self, *keys, func):
         ''' str ..., (list of any -> list of any) -> none
@@ -214,8 +271,15 @@ def query(args, host='localhost', port=9999, interpret=False):
     return result
 
 
-def _query(args, host='localhost', port=9999, interpret=False,
-           close=True, sock=None):
+def _query(
+    args,
+    host='localhost',
+    port=9999,
+    interpret=False,
+    close=True,
+    sock=None,
+    again=True,
+):
     ''' list of str, str, int, bool, bool, bool -> any
 
     the real query function, all the others are wrappers
@@ -241,9 +305,14 @@ def _query(args, host='localhost', port=9999, interpret=False,
     result, error = read(sock)
 
     if error:
+        # maybe the server closed the socket for being idle, try again
+        if again:
+            return _query(args, host, port, interpret, close, None, False)
+
         sock.close()
         sock = None
         raise DatabaseError('error: network length')
+
     if close:
         sock.close()
 
@@ -312,8 +381,7 @@ def main(args):  # pragma: no cover
     # interactive edit
     if edit_mode:
         with open(temp_file, 'w+') as filep:
-            filep.write(
-                json.dumps(result, indent=4, sort_keys=True))
+            filep.write(json.dumps(result, indent=4, sort_keys=True))
 
         output = _edit_temp_file(temp_file)
         client.query(args[:-1] + ['--set', output])
@@ -323,5 +391,5 @@ def main(args):  # pragma: no cover
         print(result)
 
 
-if __name__ == '__main__':  # pragma: no cover
+if not sys.flags.interactive and __name__ == '__main__':  # pragma: no cover
     main(sys.argv[1:])

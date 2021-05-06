@@ -26,6 +26,9 @@ class Datum(collections.MutableMapping):
         self._base = list(base) if base else ['']
         self._client = Client(host=host, port=port)
 
+    def __repr__(self):
+        return str(self)
+
     def __str__(self) -> None:
         return str(self._client.get(*self._base) or {})
 
@@ -51,13 +54,40 @@ class Datum(collections.MutableMapping):
         return iter(result or [])
 
     def __len__(self) -> int:
-        return len(self._client.get(*self._base))
+        value = self._client.get(*self._base)
+        if value:
+            return len(value)
+        return 0
 
-    def __add__(self, value: str) -> str:
+    def __add__(self, value: any) -> any:
         ''' show what ourself + value would look like, used by +=
         '''
-        result = self._client.get(*self._base, default=[], cast=list)
-        return result + [value]
+        result = self._client.get(*self._base)
+        if isinstance(result, list):
+            return result + [value]
+
+        if isinstance(result, dict):
+            raise TypeError('this type does not support addition')
+
+        return [result, value]
+
+    def __sub__(self, value: any) -> any:
+        ''' show what ourself - value would look like, used by +=
+        '''
+        result = self._client.get(*self._base)
+        if isinstance(result, list):
+            try:
+                result.remove(value)
+                return result
+            except ValueError:
+                return result
+
+        if isinstance(result, dict):
+            if value in result:
+                del result[value]
+            return result
+
+        return result - value
 
     def keys(self) -> [str]:
         ''' list of keys
